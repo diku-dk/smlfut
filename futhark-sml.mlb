@@ -1,0 +1,6 @@
+local $(SML_LIB)/basis/basis.mlb
+      lib/github.com/diku-dk/sml-json/json.mlb
+in
+      futhark-sml.sml
+end
+
