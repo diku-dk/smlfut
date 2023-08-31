@@ -37,3 +37,6 @@ test: test.json test_main.sml test.sml
 
 run_test: test
 	./test
+
+clean:
+	rm -rf MLB test.c test.h test.json test.sig test.sml smlfut test
