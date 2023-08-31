@@ -1,8 +1,8 @@
-all: futhark-sml
+all: smlfut
 
 lib:
 	smlpkg sync
 
-futhark-sml: lib futhark-sml.mlb *.sml
-	mlkit -output $@ futhark-sml.mlb
+smlfut: lib smlfut.mlb *.sml
+	mlkit -output $@ smlfut.mlb
 

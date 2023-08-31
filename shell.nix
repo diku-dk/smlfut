@@ -1,6 +1,6 @@
 let pkgs = import <nixpkgs> {};
 in pkgs.stdenv.mkDerivation {
-  name = "futhark-sml";
+  name = "smlfut";
   buildInputs = [
     pkgs.mlton
     pkgs.mlkit

@@ -1,4 +1,4 @@
-# Futhark-SML bridge
+# smlfut
 
 The goal of this program is to generate wrapper C/SML code to allow
 MPL to invoke Futhark code.  This will be done by reading the manifest
