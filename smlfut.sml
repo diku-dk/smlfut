@@ -63,7 +63,7 @@ fun entryImport (entry_point {cfun, inputs, outputs}) =
     let fun outArgType out = "* " ^ typeToSML (#type_ out) ^ " ref"
         fun inpArgType inp = "* " ^ typeToSML (#type_ inp)
     in "(_import \"" ^ cfun ^ "\" public : futhark_context " ^
-       concat (map outArgType inputs) ^ concat (map inpArgType inputs) ^ " -> Int32.int;)"
+       concat (map outArgType outputs) ^ concat (map inpArgType inputs) ^ " -> Int32.int;)"
     end
 
 fun generateEntryDef (name, ep as entry_point {cfun, inputs, outputs}) =

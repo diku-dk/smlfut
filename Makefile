@@ -1,5 +1,8 @@
 MLKIT=mlkit
+FUTHARK=futhark
+FUTHARK_BACKEND=c
 MLTON=mlton
+
 MLTONFLAGS = \
   -default-ann 'allowFFI true'
 
@@ -12,7 +15,7 @@ smlfut: lib smlfut.mlb smlfut.sml
 	$(MLKIT) -output $@ smlfut.mlb
 
 test.json: test.fut
-	futhark c --library test.fut
+	$(FUTHARK) $(FUTHARK_BACKEND) --library test.fut
 
 test.sml: test.json smlfut
 	./smlfut test.json
