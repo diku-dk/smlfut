@@ -1,17 +1,24 @@
+MLKIT=mlkit
+MLTON=mlton
+MLTONFLAGS = \
+  -default-ann 'allowFFI true'
+
 all: smlfut
 
 lib:
 	smlpkg sync
 
-smlfut: lib smlfut.mlb *.sml
-	mlkit -output $@ smlfut.mlb
+smlfut: lib smlfut.mlb smlfut.sml
+	$(MLKIT) -output $@ smlfut.mlb
 
 test.json: test.fut
 	futhark c --library test.fut
 
-test: smlfut test.json
+test.sml: test.json smlfut
 	./smlfut test.json
-	mlkit -output test test.mlb
+
+test: test.json test_main.sml test.sml
+	$(MLTON) $(MLTONFLAGS) test.mlb test.c
 
 run_test: test
 	./test

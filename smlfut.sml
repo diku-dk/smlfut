@@ -19,13 +19,40 @@ fun writeFile fname s =
     let val os = TextIO.openOut fname
     in TextIO.output(os, s) before TextIO.closeOut os end
 
-fun generate (MANIFEST {backend, entry_points}) =
-    let val specs = []
-        val defs = []
-    in ("signature FUTHARK = sig\n" ^ concat specs ^ "end\n",
-        "structure Futhark :> FUTHARK = struct\n" ^ concat defs ^ "end\n")
-    end
+val unlines = concat o map (fn s => s ^ "\n")
 
+fun generate (MANIFEST {backend, entry_points}) =
+    let val type_cfg = "type cfg = {}"
+        val exn_fut = "exception futhark of string"
+        val specs = [
+            "type ctx",
+            exn_fut,
+            type_cfg,
+            "val default_cfg : cfg",
+            "val ctx_new : cfg -> ctx",
+            "val ctx_free : ctx -> unit"
+        ]
+        val defs = [
+            "type ctx = {cfg: MLton.Pointer.t, ctx: MLton.Pointer.t}",
+            exn_fut,
+            type_cfg,
+            "type futhark_context_config = MLton.Pointer.t",
+            "type futhark_context = MLton.Pointer.t",
+            "val default_cfg = {}",
+            "fun ctx_new {} = let",
+            "val c_cfg =",
+            "(_import \"futhark_context_config_new\" public : unit -> futhark_context_config;) ()",
+            "val c_ctx =",
+            "(_import \"futhark_context_new\" public : futhark_context_config -> futhark_context;) c_cfg",
+            "in {cfg=c_cfg, ctx=c_ctx} end",
+            "fun ctx_free {cfg,ctx} = let",
+            "val () = (_import \"futhark_context_free\" public : futhark_context -> unit;) ctx",
+            "val () = (_import \"futhark_context_config_free\" public : futhark_context_config -> unit;) cfg",
+            "in () end"
+        ]
+    in ("signature FUTHARK = sig\n" ^ unlines specs ^ "end\n",
+        "structure Futhark :> FUTHARK = struct\n" ^ unlines defs ^ "end\n")
+    end
 
 local
     fun lookBool obj k =
