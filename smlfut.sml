@@ -5,12 +5,14 @@ type output = {type_: string, unique: bool}
 datatype entry_point =
   entry_point of {cfun: string, inputs: input list, outputs: output list}
 
-datatype futhark_type =
-  FUTHARK_ARRAY of
-    { ctype: string
-    , elemtype: string
-    , ops: {free: string, new: string, shape: string}
-    }
+type array_info =
+  { ctype: string
+  , elemtype: string
+  , rank: int
+  , ops: {free: string, new: string, shape: string}
+  }
+
+datatype futhark_type = FUTHARK_ARRAY of array_info
 
 datatype manifest =
   MANIFEST of
@@ -19,12 +21,16 @@ datatype manifest =
     , types: (string * futhark_type) list
     }
 
-
 fun explainManifest (MANIFEST m) =
   ( print ("Entry points:\n")
   ; map (fn (s, _) => print (s ^ "\n")) (#entry_points m)
   ; ()
   )
+
+fun lookupType t (MANIFEST m) =
+  case List.find (fn (t', _) => t = t') (#types m) of
+    SOME (_, info) => SOME info
+  | NONE => NONE
 
 fun writeFile fname s =
   let val os = TextIO.openOut fname
@@ -37,33 +43,44 @@ fun parens s = "(" ^ s ^ ")"
 
 fun intersperse y [] = []
   | intersperse y [x] = [x]
-  | intersperse y (x::xs) = x :: y :: intersperse y xs
+  | intersperse y (x :: xs) =
+      x :: y :: intersperse y xs
 
 fun punctuate c = concat o intersperse c
 
 fun replicate 0 x = []
-  | replicate n x = x :: replicate (n-1) x
+  | replicate n x =
+      x :: replicate (n - 1) x
 
 fun tuplify_e [x] = x
   | tuplify_e [] = "()"
-  | tuplify_e xs = parens (punctuate "," xs)
+  | tuplify_e xs =
+      parens (punctuate "," xs)
 
 fun tuplify_t [x] = x
   | tuplify_t [] = "unit"
-  | tuplify_t xs = parens (punctuate "*" xs)
+  | tuplify_t xs =
+      parens (punctuate "*" xs)
 
-fun typeToSML "i8" = "Int8.int"
-  | typeToSML "i16" = "Int16.int"
-  | typeToSML "i32" = "Int32.int"
-  | typeToSML "i64" = "Int64.int"
-  | typeToSML "u8" = "Word8.word"
-  | typeToSML "u16" = "Word16.word"
-  | typeToSML "u32" = "Word32.word"
-  | typeToSML "u64" = "Word64.word"
-  | typeToSML "bool" = "bool"
-  | typeToSML "[]i32" = "(int shape,Int32.int) array"
+fun fundef fname args body =
+  "fun " ^ fname ^ " " ^ punctuate " " args ^ " =\n" ^ body
+
+fun isPrimType "i8" = SOME "Int8.int"
+  | isPrimType "i16" = SOME "Int16.int"
+  | isPrimType "i32" = SOME "Int32.int"
+  | isPrimType "i64" = SOME "Int64.int"
+  | isPrimType "u8" = SOME "Word8.word"
+  | isPrimType "u16" = SOME "Word16.word"
+  | isPrimType "u32" = SOME "Word32.word"
+  | isPrimType "u64" = SOME "Word64.word"
+  | isPrimType "bool" = SOME "bool"
+  | isPrimType _ = NONE
+
+fun typeToSML "[]i32" = "(int shape,Int32.int) array"
   | typeToSML t =
-      raise Fail ("Cannot map type to SML: " ^ t)
+      case isPrimType t of
+        SOME t' => t'
+      | NONE => raise Fail ("Cannot map type to SML: " ^ t)
 
 fun blankRef "i8" = "Int8.fromInt 0"
   | blankRef "i16" = "Int16.fromInt 0"
@@ -87,83 +104,130 @@ fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
      ^ tuplify_t (map outRes outputs))
   end
 
+fun isArrayType s =
+  if String.isPrefix "[]" s then
+    case isArrayType (String.extract (s, 2, NONE)) of
+      SOME (d, t) => SOME (d + 1, t)
+    | NONE => NONE
+  else
+    NONE
+
 fun entryImport (entry_point {cfun, inputs, outputs}) =
   let
+    fun apiType t =
+      case isPrimType t of
+        SOME t' => t'
+      | NONE => "pointer"
     fun outArgType out =
-      "* " ^ typeToSML (#type_ out) ^ " ref"
+      "* " ^ apiType (#type_ out) ^ " ref"
     fun inpArgType inp =
-      "* " ^ typeToSML (#type_ inp)
+      "* " ^ apiType (#type_ inp)
   in
     "(_import \"" ^ cfun ^ "\" public : futhark_context "
     ^ concat (map outArgType outputs) ^ concat (map inpArgType inputs)
     ^ " -> Int32.int;)"
   end
 
-fun generateEntryDef (name, ep as entry_point {cfun, inputs, outputs}) =
+fun mkShape (info: array_info) v =
+  "let val shape_c = (_import \"" ^ #shape (#ops info)
+  ^ "\" public : futhark_context * pointer -> pointer;)" ^ tuplify_e ["ctx", v]
+  ^ " in "
+  ^
+  tuplify_e (List.tabulate (#rank info, fn i =>
+    "Int64.toInt"
+    ^ parens ("MLton.Pointer.getInt64" ^ tuplify_e ["shape_c", Int.toString i])))
+  ^ " end"
+
+fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
-    fun inpParams i [] = ""
+    fun inpParams i [] = []
       | inpParams i ({name = _, type_, unique = _} :: rest) =
-          " (inp" ^ Int.toString i ^ ":" ^ typeToSML type_ ^ ")"
-          ^ inpParams (i + 1) rest
+          let
+            val v = "inp" ^ Int.toString i
+          in
+            (case lookupType type_ manifest of
+               SOME (FUTHARK_ARRAY _) => "(_, " ^ v ^ ")"
+             | _ => v) :: inpParams (i + 1) rest
+          end
     fun outDecs i [] = ""
       | outDecs i ({type_, unique = _} :: rest) =
           "val out" ^ Int.toString i ^ " = ref (" ^ blankRef type_ ^ ")" ^ "\n"
           ^ outDecs (i + 1) rest
-    fun outArgs i [] = ""
+    fun outArgs i [] = []
       | outArgs i (out :: rest) =
-          ",out" ^ Int.toString i ^ outArgs (i + 1) rest
-    fun inpArgs i [] = ""
+          ("out" ^ Int.toString i) :: outArgs (i + 1) rest
+    fun inpArgs i [] = []
       | inpArgs i (inp :: rest) =
-          ",inp" ^ Int.toString i ^ inpArgs (i + 1) rest
+          "inp" ^ Int.toString i :: inpArgs (i + 1) rest
     fun outRes i [] = []
-      | outRes i (_ :: rest) =
-          ("!out" ^ Int.toString i) :: outRes (i + 1) rest
+      | outRes i (out :: rest) =
+          let
+            val v = "out" ^ Int.toString i
+          in
+            (case lookupType (#type_ out) manifest of
+               SOME (FUTHARK_ARRAY info) =>
+                 tuplify_e [mkShape info ("!" ^ v), "!" ^ v]
+             | _ => "!" ^ v) :: outRes (i + 1) rest
+          end
   in
-    ("fun entry_" ^ name ^ " {cfg,ctx}" ^ inpParams 0 inputs ^ " = let\n"
-     ^ outDecs 0 outputs ^ "val ret = " ^ entryImport ep ^ " (ctx"
-     ^ outArgs 0 outputs ^ inpArgs 0 inputs ^ ")\n" ^ "in "
-     ^ tuplify_e (outRes 0 outputs) ^ " end")
+    fundef ("entry_" ^ name) (["{cfg,ctx}"] @ (inpParams 0 inputs))
+      ("let\n" ^ outDecs 0 outputs ^ "val ret = " ^ entryImport ep
+       ^ tuplify_e (["ctx"] @ outArgs 0 outputs @ inpArgs 0 inputs) ^ "\nin"
+       ^ tuplify_e (outRes 0 outputs) ^ " end")
   end
 
 fun shapeTypeOfRank d =
-    (tuplify_t o replicate d) "int" ^ " shape"
+  (tuplify_t o replicate d) "int" ^ " shape"
 
 val determineRank =
-    let fun f (#"[" :: #"]" :: rest) = 1 + f rest
-          | f _ = 0
-    in f o explode end
+  let
+    fun f (#"[" :: #"]" :: rest) = 1 + f rest
+      | f _ = 0
+  in
+    f o explode
+  end
 
-fun generateTypeDef (name, FUTHARK_ARRAY {ctype, elemtype, ops}) =
-    let val d = determineRank name
-        val data_t = typeToSML elemtype ^ " Array.array"
-    in unlines [
-            "fun new_" ^ Int.toString d ^ "d_" ^ elemtype ^ " {ctx,cfg} " ^
-            parens ("data: " ^ data_t) ^
-            punctuate " " (List.tabulate (d, fn i => parens ("d" ^ Int.toString i ^ ": " ^ shapeTypeOfRank d))) ^ " =",
-            "(_import \"" ^ #new ops ^ "\" : futhark_context * " ^
-            data_t ^ " * " ^
-            punctuate "*" (replicate d "Int64.int") ^ " -> MLton.Pointer.t;)" ^
-            tuplify_e (["ctx", "data"] @
-                       List.tabulate (d, fn i => "Int64.fromInt d" ^ Int.toString i))
-        ]
-    end
+fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
+  let
+    val data_t = typeToSML elemtype ^ " Array.array"
+  in
+    unlines
+      [fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+         [ "{ctx,cfg}"
+         , parens ("data: " ^ data_t)
+         , parens ("shape: " ^ shapeTypeOfRank rank)
+         ]
+         (tuplify_e
+            [ "shape"
+            , "(_import \"" ^ #new ops ^ "\" : futhark_context * " ^ data_t
+              ^ " * " ^ punctuate "*" (replicate rank "Int64.int")
+              ^ " -> pointer;)"
+              ^
+              tuplify_e
+                (["ctx", "data"]
+                 @
+                 (if rank = 1 then
+                    ["Int64.fromInt shape"]
+                  else
+                    List.tabulate (rank, fn i =>
+                      "Int64.fromInt"
+                      ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"))))
+            ])]
+  end
 
-fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, elemtype, ops}) =
-    let val d = determineRank name
-    in unlines [
-            "val new_" ^ Int.toString d ^ "d_" ^ elemtype ^ " : ctx -> " ^
-        typeToSML elemtype ^ " Array.array -> " ^
-        shapeTypeOfRank d ^ " -> " ^
-        tuplify_e [shapeTypeOfRank d, typeToSML elemtype] ^ " array"
-    ] end
+fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
+  unlines
+    ["val new_" ^ Int.toString rank ^ "d_" ^ elemtype ^ " : ctx -> "
+     ^ typeToSML elemtype ^ " Array.array -> " ^ shapeTypeOfRank rank ^ " -> "
+     ^ tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
 
-fun generate (MANIFEST {backend, entry_points, types}) =
+fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
     val type_cfg = "type cfg = {}"
     val type_shape = "type 'a shape = 'a"
     val exn_fut = "exception futhark of string"
     val entry_specs = map generateEntrySpec entry_points
-    val entry_defs = map generateEntryDef entry_points
+    val entry_defs = map (generateEntryDef manifest) entry_points
     val type_specs = map generateTypeSpec types
     val type_defs = map generateTypeDef types
     val specs =
@@ -175,26 +239,33 @@ fun generate (MANIFEST {backend, entry_points, types}) =
       , "val ctx_free : ctx -> unit"
       , type_shape
       , "type ('elem, 'shape) array"
+      , "val shape : ('elem, 'shape) array -> 'shape"
       ] @ type_specs @ entry_specs
     val defs =
-      [ "type ctx = {cfg: MLton.Pointer.t, ctx: MLton.Pointer.t}"
+      [ "type pointer = MLton.Pointer.t"
+      , "type ctx = {cfg: pointer, ctx: pointer}"
       , exn_fut
       , type_cfg
-      , "type futhark_context_config = MLton.Pointer.t"
-      , "type futhark_context = MLton.Pointer.t"
+      , "type futhark_context_config = pointer"
+      , "type futhark_context = pointer"
       , "val default_cfg = {}"
-      , "fun ctx_new {} = let"
-      , "val c_cfg ="
-      , "(_import \"futhark_context_config_new\" public : unit -> futhark_context_config;) ()"
-      , "val c_ctx ="
-      , "(_import \"futhark_context_new\" public : futhark_context_config -> futhark_context;) c_cfg"
-      , "in {cfg=c_cfg, ctx=c_ctx} end"
-      , "fun ctx_free {cfg,ctx} = let"
-      , "val () = (_import \"futhark_context_free\" public : futhark_context -> unit;) ctx"
-      , "val () = (_import \"futhark_context_config_free\" public : futhark_context_config -> unit;) cfg"
-      , "in () end"
+      , fundef "ctx_new" ["{}"] (unlines
+          [ "let"
+          , "val c_cfg ="
+          , "(_import \"futhark_context_config_new\" public : unit -> futhark_context_config;) ()"
+          , "val c_ctx ="
+          , "(_import \"futhark_context_new\" public : futhark_context_config -> futhark_context;) c_cfg"
+          , "in {cfg=c_cfg, ctx=c_ctx} end"
+          ])
+      , fundef "ctx_free" ["{cfg,ctx}"] (unlines
+          [ "let"
+          , "val () = (_import \"futhark_context_free\" public : futhark_context -> unit;) ctx"
+          , "val () = (_import \"futhark_context_config_free\" public : futhark_context_config -> unit;) cfg"
+          , "in () end"
+          ])
       , type_shape
-      , "type ('elem, 'shape) array = MLton.Pointer.t"
+      , "type ('elem, 'shape) array = 'shape * pointer"
+      , fundef "shape" ["(x,_)"] "x"
       ] @ type_defs @ entry_defs
   in
     ( "signature FUTHARK = sig\n" ^ unlines specs ^ "end\n"
@@ -206,6 +277,14 @@ local
   fun lookBool obj k =
     case Json.objLook obj k of
       SOME (Json.BOOL b) => b
+    | _ => raise Fail ("Missing key: " ^ k)
+
+  fun lookInt obj k =
+    case Json.objLook obj k of
+      SOME (Json.NUMBER s) =>
+        (case Int.fromString s of
+           SOME x => x
+         | NONE => raise Fail ("Not an int: " ^ s))
     | _ => raise Fail ("Missing key: " ^ k)
 
   fun lookString obj k =
@@ -258,9 +337,10 @@ local
               FUTHARK_ARRAY
                 { ctype = lookString obj "ctype"
                 , elemtype = lookString obj "elemtype"
+                , rank = lookInt obj "rank"
                 , ops = arrayOps (lookObj obj "ops")
                 }
-           | kind => raise Fail ("Cannot handle type of kind: " ^ kind)
+          | kind => raise Fail ("Cannot handle type of kind: " ^ kind)
         )
     | typeFromJSON _ = raise Fail "Invalid type in manifest."
 
