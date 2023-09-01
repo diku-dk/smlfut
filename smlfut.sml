@@ -104,14 +104,6 @@ fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
      ^ tuplify_t (map outRes outputs))
   end
 
-fun isArrayType s =
-  if String.isPrefix "[]" s then
-    case isArrayType (String.extract (s, 2, NONE)) of
-      SOME (d, t) => SOME (d + 1, t)
-    | NONE => NONE
-  else
-    NONE
-
 fun entryImport (entry_point {cfun, inputs, outputs}) =
   let
     fun apiType t =
@@ -178,14 +170,6 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
 
 fun shapeTypeOfRank d =
   (tuplify_t o replicate d) "int" ^ " shape"
-
-val determineRank =
-  let
-    fun f (#"[" :: #"]" :: rest) = 1 + f rest
-      | f _ = 0
-  in
-    f o explode
-  end
 
 fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   let
