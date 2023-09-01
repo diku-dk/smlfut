@@ -32,7 +32,7 @@ test.json: test.fut
 test.sml: test.json smlfut
 	./smlfut test.json
 
-test: test.json test_main.sml test.sml
+test: test.json test_main.sml test.sig test.sml
 	$(MLTON) $(MLTONFLAGS) test.mlb test.c
 
 run_test: test
