@@ -38,6 +38,7 @@ fun typeToSML "i8" = "Int8.int"
   | typeToSML "u32" = "Word32.word"
   | typeToSML "u64" = "Word64.word"
   | typeToSML "bool" = "bool"
+  | typeToSML "[]i32" = "(Int32.int, int) array"
   | typeToSML t = raise Fail ("Cannot map type to SML: " ^ t)
 
 fun blankRef "i8" = "Int8.fromInt 0"
@@ -49,6 +50,7 @@ fun blankRef "i8" = "Int8.fromInt 0"
   | blankRef "u32" = "Word32.fromInt 0"
   | blankRef "u64" = "Word64.fromInt 0"
   | blankRef "bool" = "false"
+  | blankRef "[]i32" = "raise Domain"
   | blankRef t = raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
@@ -102,7 +104,8 @@ fun generate (MANIFEST {backend, entry_points}) =
             type_cfg,
             "val default_cfg : cfg",
             "val ctx_new : cfg -> ctx",
-            "val ctx_free : ctx -> unit"
+            "val ctx_free : ctx -> unit",
+            "type ('elem, 'shape) array"
         ] @ entry_specs
         val defs = [
             "type ctx = {cfg: MLton.Pointer.t, ctx: MLton.Pointer.t}",
@@ -120,7 +123,8 @@ fun generate (MANIFEST {backend, entry_points}) =
             "fun ctx_free {cfg,ctx} = let",
             "val () = (_import \"futhark_context_free\" public : futhark_context -> unit;) ctx",
             "val () = (_import \"futhark_context_config_free\" public : futhark_context_config -> unit;) cfg",
-            "in () end"
+            "in () end",
+            "type ('elem, 'shape) array = MLton.Pointer.t"
         ] @ entry_defs
     in ("signature FUTHARK = sig\n" ^ unlines specs ^ "end\n",
         "structure Futhark :> FUTHARK = struct\n" ^ unlines defs ^ "end\n")
