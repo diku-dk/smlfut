@@ -54,7 +54,7 @@ fun blankRef "i8" = "Int8.fromInt 0"
 fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
     let fun inpParam {name=_, type_, unique=_} = " -> " ^ typeToSML type_
         fun outRes {type_, unique=_} = typeToSML type_
-    in ("val entry_main : ctx" ^
+    in ("val entry_" ^ name ^ " : ctx" ^
         concat (map inpParam inputs) ^ " -> " ^
         tuplify_t (map outRes outputs))
     end
@@ -83,7 +83,7 @@ fun generateEntryDef (name, ep as entry_point {cfun, inputs, outputs}) =
             ",inp" ^ Int.toString i ^ inpArgs (i+1) rest
         fun outRes i [] = []
           | outRes i (_::rest) = ("!out" ^ Int.toString i) :: outRes (i+1) rest
-    in ("fun entry_main {cfg,ctx}" ^
+    in ("fun entry_" ^ name ^ " {cfg,ctx}" ^
         inpParams 0 inputs ^ " = let\n" ^
         outDecs 0 outputs ^
         "val ret = " ^ entryImport ep ^
