@@ -1,42 +1,24 @@
-MLKIT=mlkit
-FUTHARK=futhark
-FUTHARK_BACKEND=c
-MLTON=mlton
-
-MLTONFLAGS = \
-  -default-ann 'allowFFI true'
-
-ifeq ($(FUTHARK_BACKEND),hip)
-MLTONFLAGS += -link-opt '-lhiprtc -lamdhip64'
-endif
-
-ifeq ($(FUTHARK_BACKEND),opencl)
-MLTONFLAGS += -link-opt '-lOpenCL'
-endif
-
-ifeq ($(FUTHARK_BACKEND),cuda)
-MLTONFLAGS += -link-opt '-lcuda -lnvrtc -lcudart'
-endif
+include config.mk
 
 all: smlfut
 
-lib:
-	smlpkg sync
+src/lib:
+	cd src && smlpkg sync
 
-smlfut: lib smlfut.mlb smlfut.sml
-	$(MLKIT) -output $@ smlfut.mlb
+smlfut: src/lib src/smlfut.mlb src/smlfut.sml
+	$(MLKIT) -output $@ src/smlfut.mlb
 
-test.json: test.fut
-	$(FUTHARK) $(FUTHARK_BACKEND) --library test.fut
+test/test.json: test/test.fut
+	$(FUTHARK) $(FUTHARK_BACKEND) --library $<
 
-test.sml: test.json smlfut
-	./smlfut test.json
+test/test.sml: test/test.json smlfut
+	./smlfut test/test.json
 
-test: test.json test_main.sml test.sig test.sml
-	$(MLTON) $(MLTONFLAGS) test.mlb test.c
+test/test: test/test.json test/test_main.sml test/test.sml
+	$(MLTON) $(MLTONFLAGS) test/test.mlb test/test.c
 
-run_test: test
-	./test
+run_test: test/test
+	test/test
 
 clean:
-	rm -rf MLB test.c test.h test.json test.sig test.sml smlfut test
+	rm -rf smlfut MLB src/MLBtest/MLB test/test.c test/test.h test/test.json test/test.sig test/test.sml
