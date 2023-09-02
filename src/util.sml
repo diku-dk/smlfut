@@ -26,6 +26,9 @@ fun tuplify_t [x] = x
 fun fundef fname args body =
   "fun " ^ fname ^ " " ^ punctuate " " args ^ " =\n" ^ body
 
+fun valspec fname params ret =
+  "val " ^ fname ^ " : " ^ punctuate " -> " (params @ [ret])
+
 fun writeFile fname s =
   let val os = TextIO.openOut fname
   in TextIO.output (os, s) before TextIO.closeOut os

@@ -37,13 +37,9 @@ fun blankRef "i8" = "Int8.fromInt 0"
       raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
-  let
-    fun inpParam {name = _, type_, unique = _} = " -> " ^ typeToSML type_
-    fun outRes {type_, unique = _} = typeToSML type_
-  in
-    ("val entry_" ^ name ^ " : ctx" ^ concat (map inpParam inputs) ^ " -> "
-     ^ tuplify_t (map outRes outputs))
-  end
+    valspec ("entry_" ^ name)
+            ("ctx" :: map (typeToSML o #type_) inputs)
+            (tuplify_t (map (typeToSML o #type_) outputs))
 
 fun mkShape (info: array_info) v =
     "let val shape_c = " ^
@@ -142,12 +138,13 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
 
 fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   unlines
-    ["val new_" ^ Int.toString rank ^ "d_" ^ elemtype ^ " : ctx -> "
-     ^ typeToSML elemtype ^ " Array.array -> " ^ shapeTypeOfRank rank ^ " -> "
-     ^ tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array",
-     "val values_" ^ Int.toString rank ^ "d_" ^ elemtype ^ " : ctx -> " ^
-     tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array" ^ " -> " ^
-     typeToSML elemtype ^ " Array.array"]
+    [valspec ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+             ["ctx", typeToSML elemtype ^ " Array.array", shapeTypeOfRank rank]
+             (tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"),
+     valspec ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
+             ["ctx",
+              tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
+             (typeToSML elemtype ^ " Array.array")]
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
@@ -162,12 +159,12 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
       [ "type ctx"
       , exn_fut
       , type_cfg
-      , "val default_cfg : cfg"
-      , "val ctx_new : cfg -> ctx"
-      , "val ctx_free : ctx -> unit"
+      , valspec "default_cfg" [] "cfg"
+      , valspec "ctx_new" ["cfg"] "ctx"
+      , valspec "ctx_free" ["ctx"] "unit"
       , type_shape
       , "type ('elem, 'shape) array"
-      , "val shape : ('elem, 'shape) array -> 'shape"
+      , valspec "shape" ["('elem, 'shape) array"] "'shape"
       ] @ type_specs @ entry_specs
     val defs =
       [ "type pointer = MLton.Pointer.t"
