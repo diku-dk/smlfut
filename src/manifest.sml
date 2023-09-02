@@ -9,7 +9,7 @@ type array_info =
   { ctype: string
   , elemtype: string
   , rank: int
-  , ops: {free: string, new: string, shape: string}
+  , ops: {free: string, new: string, shape: string, values: string}
   }
 
 datatype futhark_type = FUTHARK_ARRAY of array_info
@@ -87,6 +87,7 @@ local
     { free = lookString obj "free"
     , new = lookString obj "new"
     , shape = lookString obj "shape"
+    , values = lookString obj "values"
     }
 
   fun typeFromJSON (name, Json.OBJECT obj) =

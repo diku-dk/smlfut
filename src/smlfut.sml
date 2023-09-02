@@ -106,13 +106,13 @@ fun shapeTypeOfRank d =
 fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   let
     val data_t = typeToSML elemtype ^ " Array.array"
-    val shape_args = if rank = 1
-                     then [("Int64.fromInt shape", "Int64.int")]
-                     else List.tabulate
-                            (rank, fn i =>
-                                      ("Int64.fromInt"
-                                       ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"),
-                                       "Int64.int"))
+    val shape = if rank = 1
+                then ["Int64.fromInt shape"]
+                else List.tabulate
+                       (rank, fn i =>
+                                 "Int64.fromInt"
+                                 ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"))
+    val shape_args = map (fn x => (x, "Int64.int")) shape
   in
     unlines
       [fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
@@ -124,14 +124,30 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
                  [ "shape"
                  , fficall (#new ops)
                            ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
-                           "pointer"])]
+                           "pointer"]),
+       fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
+              [ "{ctx,cfg}",
+                "(shape, data)"]
+              (unlines ["let",
+                        "val n = Int64.toInt" ^
+                        parens (foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)),
+                        "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")",
+                        "val err = " ^ fficall (#values ops) [("ctx", "futhark_context"),
+                                                              ("data", "pointer"),
+                                                              ("out", data_t)]
+                                               "Int32.int",
+                        "in out end"])
+      ]
   end
 
 fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   unlines
     ["val new_" ^ Int.toString rank ^ "d_" ^ elemtype ^ " : ctx -> "
      ^ typeToSML elemtype ^ " Array.array -> " ^ shapeTypeOfRank rank ^ " -> "
-     ^ tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
+     ^ tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array",
+     "val values_" ^ Int.toString rank ^ "d_" ^ elemtype ^ " : ctx -> " ^
+     tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array" ^ " -> " ^
+     typeToSML elemtype ^ " Array.array"]
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
