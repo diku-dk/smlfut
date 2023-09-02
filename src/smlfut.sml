@@ -1,10 +1,12 @@
 (* Invoke named C function with the provided (SML) arguments and return type *)
 fun fficall cfun args ret =
-    let val (arg_es, arg_ts) = ListPair.unzip args
-    in parens ("_import \"" ^ cfun ^ "\" public : " ^
-               tuplify_t arg_ts ^ " -> " ^ ret ^ ";")
-       ^ tuplify_e arg_es
-    end
+  let
+    val (arg_es, arg_ts) = ListPair.unzip args
+  in
+    parens
+      ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret
+       ^ ";") ^ tuplify_e arg_es
+  end
 
 fun isPrimType "i8" = SOME "Int8.int"
   | isPrimType "i16" = SOME "Int16.int"
@@ -37,19 +39,19 @@ fun blankRef "i8" = "Int8.fromInt 0"
       raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
-    valspec ("entry_" ^ name)
-            ("ctx" :: map (typeToSML o #type_) inputs)
-            (tuplify_t (map (typeToSML o #type_) outputs))
+  valspec ("entry_" ^ name) ("ctx" :: map (typeToSML o #type_) inputs)
+    (tuplify_t (map (typeToSML o #type_) outputs))
 
 fun mkShape (info: array_info) v =
-    "let val shape_c = " ^
-    fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")] "pointer"
-    ^ " in "
-    ^
-    tuplify_e (List.tabulate (#rank info, fn i =>
+  "let val shape_c = "
+  ^
+  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")]
+    "pointer" ^ " in "
+  ^
+  tuplify_e (List.tabulate (#rank info, fn i =>
     "Int64.toInt"
     ^ parens ("MLton.Pointer.getInt64" ^ tuplify_e ["shape_c", Int.toString i])))
-    ^ " end"
+  ^ " end"
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -72,7 +74,8 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           ^ outDecs (i + 1) rest
     fun outArgs i [] = []
       | outArgs i (out :: rest) =
-          ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref") :: outArgs (i + 1) rest
+          ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref")
+          :: outArgs (i + 1) rest
     fun inpArgs i [] = []
       | inpArgs i (inp :: rest) =
           ("inp" ^ Int.toString i, apiType (#type_ inp)) :: inpArgs (i + 1) rest
@@ -88,12 +91,11 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           end
   in
     fundef ("entry_" ^ name) (["{cfg,ctx}"] @ (inpParams 0 inputs))
-           ("let\n" ^ outDecs 0 outputs ^ "val ret = " ^
-            fficall cfun
-                    ([("ctx", "futhark_context")] @ outArgs 0 outputs @ inpArgs 0 inputs)
-                    "Int32.int" ^
-            "\nin"
-            ^ tuplify_e (outRes 0 outputs) ^ " end")
+      ("let\n" ^ outDecs 0 outputs ^ "val ret = "
+       ^
+       fficall cfun
+         ([("ctx", "futhark_context")] @ outArgs 0 outputs @ inpArgs 0 inputs)
+         "Int32.int" ^ "\nin" ^ tuplify_e (outRes 0 outputs) ^ " end")
   end
 
 fun shapeTypeOfRank d =
@@ -102,49 +104,54 @@ fun shapeTypeOfRank d =
 fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   let
     val data_t = typeToSML elemtype ^ " Array.array"
-    val shape = if rank = 1
-                then ["Int64.fromInt shape"]
-                else List.tabulate
-                       (rank, fn i =>
-                                 "Int64.fromInt"
-                                 ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"))
+    val shape =
+      if rank = 1 then
+        ["Int64.fromInt shape"]
+      else
+        List.tabulate (rank, fn i =>
+          "Int64.fromInt" ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"))
     val shape_args = map (fn x => (x, "Int64.int")) shape
   in
     unlines
-      [fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
-              [ "{ctx,cfg}"
-              , parens ("data: " ^ data_t)
-              , parens ("shape: " ^ shapeTypeOfRank rank)
-              ]
-              (tuplify_e
-                 [ "shape"
-                 , fficall (#new ops)
-                           ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
-                           "pointer"]),
-       fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-              [ "{ctx,cfg}",
-                "(shape, data)"]
-              (unlines ["let",
-                        "val n = Int64.toInt" ^
-                        parens (foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)),
-                        "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")",
-                        "val err = " ^ fficall (#values ops) [("ctx", "futhark_context"),
-                                                              ("data", "pointer"),
-                                                              ("out", data_t)]
-                                               "Int32.int",
-                        "in out end"])
+      [ fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+          [ "{ctx,cfg}"
+          , parens ("data: " ^ data_t)
+          , parens ("shape: " ^ shapeTypeOfRank rank)
+          ]
+          (tuplify_e
+             [ "shape"
+             , fficall (#new ops)
+                 ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
+                 "pointer"
+             ])
+      , fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
+          ["{ctx,cfg}", "(shape, data)"]
+          (unlines
+             [ "let"
+             , "val n = Int64.toInt"
+               ^ parens (foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape))
+             , "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")"
+             , "val err = "
+               ^
+               fficall (#values ops)
+                 [ ("ctx", "futhark_context")
+                 , ("data", "pointer")
+                 , ("out", data_t)
+                 ] "Int32.int"
+             , "in out end"
+             ])
       ]
   end
 
 fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   unlines
-    [valspec ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
-             ["ctx", typeToSML elemtype ^ " Array.array", shapeTypeOfRank rank]
-             (tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"),
-     valspec ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-             ["ctx",
-              tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
-             (typeToSML elemtype ^ " Array.array")]
+    [ valspec ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+        ["ctx", typeToSML elemtype ^ " Array.array", shapeTypeOfRank rank]
+        (tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array")
+    , valspec ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
+        ["ctx", tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
+        (typeToSML elemtype ^ " Array.array")
+    ]
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
@@ -179,13 +186,18 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
           , "val c_cfg ="
           , fficall "futhark_context_config_new" [] "futhark_context_config"
           , "val c_ctx ="
-          , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")] "futhark_context"
+          , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
+              "futhark_context"
           , "in {cfg=c_cfg, ctx=c_ctx} end"
           ])
       , fundef "ctx_free" ["{cfg,ctx}"] (unlines
-         [ "let"
-         , "val () = " ^ fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
-         , "val () = " ^ fficall "futhark_context_config_free" [("cfg", "futhark_context_config")] "unit"
+          [ "let"
+          , "val () = "
+            ^ fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
+          , "val () = "
+            ^
+            fficall "futhark_context_config_free"
+              [("cfg", "futhark_context_config")] "unit"
           , "in () end"
           ])
       , type_shape
