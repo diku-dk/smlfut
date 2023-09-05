@@ -9,6 +9,20 @@ fun fficall cfun args ret =
           ^ ";")) arg_es
   end
 
+fun smlArrayModule (info: array_info) =
+  case #elemtype info of
+    "i32" => "Int32Array"
+  | _ =>
+      raise Fail
+        ("Cannot represent SML array with element type: " ^ #elemtype info)
+
+fun smlArrayType info = smlArrayModule info ^ ".array"
+
+fun futharkArrayType (info: array_info) =
+  "array_" ^ #elemtype info ^ "_" ^ Int.toString (#rank info) ^ "d"
+
+fun futharkTypeToSML (FUTHARK_ARRAY info) = futharkArrayType info
+
 fun isPrimType "i8" = SOME "Int8.int"
   | isPrimType "i16" = SOME "Int16.int"
   | isPrimType "i32" = SOME "Int32.int"
@@ -20,11 +34,15 @@ fun isPrimType "i8" = SOME "Int8.int"
   | isPrimType "bool" = SOME "bool"
   | isPrimType _ = NONE
 
-fun typeToSML "[]i32" = "(int shape,Int32.int) array"
-  | typeToSML t =
-      case isPrimType t of
-        SOME t' => t'
-      | NONE => raise Fail ("Cannot map type to SML: " ^ t)
+fun primTypeToSML t =
+  case isPrimType t of
+    SOME t' => t'
+  | NONE => raise Fail ("Cannot map type to SML: " ^ t)
+
+fun typeToSML manifest t =
+  case lookupType manifest t of
+    SOME t' => futharkTypeToSML t'
+  | NONE => primTypeToSML t
 
 fun blankRef "i8" = "Int8.fromInt 0"
   | blankRef "i16" = "Int16.fromInt 0"
@@ -39,9 +57,23 @@ fun blankRef "i8" = "Int8.fromInt 0"
   | blankRef t =
       raise Fail ("blankRef: " ^ t)
 
-fun generateEntrySpec (name, entry_point {cfun, inputs, outputs}) =
-  valspec ("entry_" ^ name) ("ctx" :: map (typeToSML o #type_) inputs)
-    (tuplify_t (map (typeToSML o #type_) outputs))
+fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
+  valspec ("entry_" ^ name) ("ctx" :: map (typeToSML manifest o #type_) inputs)
+    (tuplify_t (map (typeToSML manifest o #type_) outputs))
+
+fun mkSum [] = "0"
+  | mkSum [x] = x
+  | mkSum (x :: xs) = x ^ "+" ^ mkSum xs
+
+fun mkSize (info: array_info) v =
+  "let val shape_c = "
+  ^
+  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")]
+    "pointer" ^ " in "
+  ^
+  mkSum (List.tabulate (#rank info, fn i =>
+    apply "Int64.toInt"
+      [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
 
 fun mkShape (info: array_info) v =
   "let val shape_c = "
@@ -51,8 +83,7 @@ fun mkShape (info: array_info) v =
   ^
   tuplify_e (List.tabulate (#rank info, fn i =>
     apply "Int64.toInt"
-    [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))
-  ^ " end"
+      [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -65,7 +96,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           let
             val v = "inp" ^ Int.toString i
           in
-            (case lookupType type_ manifest of
+            (case lookupType manifest type_ of
                SOME (FUTHARK_ARRAY _) => "(_, " ^ v ^ ")"
              | _ => v) :: inpParams (i + 1) rest
           end
@@ -85,9 +116,8 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           let
             val v = "out" ^ Int.toString i
           in
-            (case lookupType (#type_ out) manifest of
-               SOME (FUTHARK_ARRAY info) =>
-                 tuplify_e [mkShape info ("!" ^ v), "!" ^ v]
+            (case lookupType manifest (#type_ out) of
+               SOME (FUTHARK_ARRAY info) => tuplify_e ["ctx", "!" ^ v]
              | _ => "!" ^ v) :: outRes (i + 1) rest
           end
   in
@@ -100,11 +130,24 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
   end
 
 fun shapeTypeOfRank d =
-  (tuplify_t o replicate d) "int" ^ " shape"
+  (tuplify_t o replicate d) "int"
 
-fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
+fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
+  unlines
+    [ typespec (futharkArrayType info) []
+    , valspec ("new_" ^ Int.toString (#rank info) ^ "d_" ^ #elemtype info)
+        ["ctx", smlArrayType info, shapeTypeOfRank (#rank info)]
+        (futharkArrayType info)
+    , valspec ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
+        [futharkArrayType info] (shapeTypeOfRank (#rank info))
+    , valspec ("values_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
+        [futharkArrayType info] (smlArrayType info)
+    ]
+
+fun generateTypeDef manifest
+  (name, FUTHARK_ARRAY (info as {ctype, rank, elemtype, ops})) =
   let
-    val data_t = tapply "Array.array" [typeToSML elemtype]
+    val data_t = smlArrayType info
     val shape =
       if rank = 1 then
         ["Int64.fromInt shape"]
@@ -114,26 +157,27 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
     val shape_args = map (fn x => (x, "Int64.int")) shape
   in
     unlines
-      [ fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+      [ typedef (futharkArrayType info) []
+          (tuplify_t ["futhark_context", "pointer"])
+      , fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
           [ "{ctx,cfg}"
           , parens ("data: " ^ data_t)
           , parens ("shape: " ^ shapeTypeOfRank rank)
           ]
           (tuplify_e
-             [ "shape"
+             [ "ctx"
              , fficall (#new ops)
                  ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
                  "pointer"
              ])
-      , fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-          ["{ctx,cfg}", "(shape, data)"]
+      , fundef ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
+          ["(ctx,data)"] (mkShape info "data")
+      , fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype) ["(ctx, data)"]
           (unlines
              [ "let"
-             , "val n = "
-               ^
-               apply "Int64.toInt"
-                 [foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)]
-             , "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")"
+             , "val n = " ^ mkSize info "data"
+             , "val out = "
+               ^ apply (smlArrayModule info ^ ".array") ["n", blankRef elemtype]
              , "val err = "
                ^
                fficall (#values ops)
@@ -146,25 +190,14 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
       ]
   end
 
-fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
-  unlines
-    [ valspec ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
-        ["ctx", tapply "Array.array" [typeToSML elemtype], shapeTypeOfRank rank]
-        (tapply "array" [shapeTypeOfRank rank, typeToSML elemtype])
-    , valspec ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-        ["ctx", tapply "array" [shapeTypeOfRank rank, typeToSML elemtype]]
-        (tapply "Array.array" [typeToSML elemtype])
-    ]
-
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
     val type_cfg = typedef "cfg" [] "{}"
-    val type_shape = typedef "shape" ["'a"] "'a"
     val exn_fut = "exception futhark of string"
-    val entry_specs = map generateEntrySpec entry_points
+    val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
-    val type_specs = map generateTypeSpec types
-    val type_defs = map generateTypeDef types
+    val type_specs = map (generateTypeSpec manifest) types
+    val type_defs = map (generateTypeDef manifest) types
     val specs =
       [ typespec "ctx" []
       , exn_fut
@@ -172,9 +205,6 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
       , valspec "default_cfg" [] "cfg"
       , valspec "ctx_new" ["cfg"] "ctx"
       , valspec "ctx_free" ["ctx"] "unit"
-      , type_shape
-      , typespec "array" ["'elem", "'shape"]
-      , valspec "shape" ["('elem, 'shape) array"] "'shape"
       ] @ type_specs @ entry_specs
     val defs =
       [ typedef "pointer" [] "MLton.Pointer.t"
@@ -203,9 +233,6 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
               [("cfg", "futhark_context_config")] "unit"
           , "in () end"
           ])
-      , type_shape
-      , typedef "array" ["'elem", "'shape"] "'shape * pointer"
-      , fundef "shape" ["(x,_)"] "x"
       ] @ type_defs @ entry_defs
   in
     ( "signature FUTHARK = sig\n" ^ unlines specs ^ "end\n"

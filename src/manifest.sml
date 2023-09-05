@@ -27,7 +27,7 @@ fun explainManifest (MANIFEST m) =
   ; ()
   )
 
-fun lookupType t (MANIFEST m) =
+fun lookupType (MANIFEST m) t =
   case List.find (fn (t', _) => t = t') (#types m) of
     SOME (_, info) => SOME info
   | NONE => NONE
