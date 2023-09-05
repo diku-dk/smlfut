@@ -23,17 +23,26 @@ fun tuplify_t [x] = x
   | tuplify_t xs =
       parens (punctuate "*" xs)
 
+fun apply f args =
+    f ^ parens (punctuate ", " args)
+
+fun tapply f [] = f
+  | tapply f args = parens (punctuate ", " args) ^ f
+
 fun fundef fname args body =
   "fun " ^ fname ^ " " ^ punctuate " " args ^ " =\n" ^ body
 
 fun valspec fname params ret =
   "val " ^ fname ^ " : " ^ punctuate " -> " (params @ [ret])
 
-fun apply f args =
-    f ^ parens (punctuate ", " args)
+fun typespec tname args =
+    "type " ^ tapply tname args
 
-fun tapply f args =
-    parens (punctuate ", " args) ^ f
+fun typedef tname args def =
+    "type " ^ tapply tname args ^ " = " ^ def
+
+fun datatypedef tname args def =
+    "datatype " ^ tapply tname args ^ " = " ^ def
 
 fun writeFile fname s =
   let val os = TextIO.openOut fname

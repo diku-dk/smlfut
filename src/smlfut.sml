@@ -3,9 +3,10 @@ fun fficall cfun args ret =
   let
     val (arg_es, arg_ts) = ListPair.unzip args
   in
-      apply
-          (parens ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret ^ ";"))
-          arg_es
+    apply
+      (parens
+         ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret
+          ^ ";")) arg_es
   end
 
 fun isPrimType "i8" = SOME "Int8.int"
@@ -49,8 +50,8 @@ fun mkShape (info: array_info) v =
     "pointer" ^ " in "
   ^
   tuplify_e (List.tabulate (#rank info, fn i =>
-    "Int64.toInt"
-    ^ parens ("MLton.Pointer.getInt64" ^ tuplify_e ["shape_c", Int.toString i])))
+    apply "Int64.toInt"
+    [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))
   ^ " end"
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
@@ -109,7 +110,7 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
         ["Int64.fromInt shape"]
       else
         List.tabulate (rank, fn i =>
-                                apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
+          apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
     val shape_args = map (fn x => (x, "Int64.int")) shape
   in
     unlines
@@ -128,9 +129,10 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
           ["{ctx,cfg}", "(shape, data)"]
           (unlines
              [ "let"
-             , "val n = " ^
+             , "val n = "
+               ^
                apply "Int64.toInt"
-                     [foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)]
+                 [foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)]
              , "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")"
              , "val err = "
                ^
@@ -156,31 +158,31 @@ fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
-    val type_cfg = "type cfg = {}"
-    val type_shape = "type 'a shape = 'a"
+    val type_cfg = typedef "cfg" [] "{}"
+    val type_shape = typedef "shape" ["'a"] "'a"
     val exn_fut = "exception futhark of string"
     val entry_specs = map generateEntrySpec entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
     val type_specs = map generateTypeSpec types
     val type_defs = map generateTypeDef types
     val specs =
-      [ "type ctx"
+      [ typespec "ctx" []
       , exn_fut
       , type_cfg
       , valspec "default_cfg" [] "cfg"
       , valspec "ctx_new" ["cfg"] "ctx"
       , valspec "ctx_free" ["ctx"] "unit"
       , type_shape
-      , "type ('elem, 'shape) array"
+      , typespec "array" ["'elem", "'shape"]
       , valspec "shape" ["('elem, 'shape) array"] "'shape"
       ] @ type_specs @ entry_specs
     val defs =
-      [ "type pointer = MLton.Pointer.t"
-      , "type ctx = {cfg: pointer, ctx: pointer}"
+      [ typedef "pointer" [] "MLton.Pointer.t"
+      , typedef "ctx" [] "{cfg: pointer, ctx: pointer}"
       , exn_fut
       , type_cfg
-      , "type futhark_context_config = pointer"
-      , "type futhark_context = pointer"
+      , typedef "futhark_context_config" [] "pointer"
+      , typedef "futhark_context" [] "pointer"
       , "val default_cfg = {}"
       , fundef "ctx_new" ["{}"] (unlines
           [ "let"
@@ -202,7 +204,7 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
           , "in () end"
           ])
       , type_shape
-      , "type ('elem, 'shape) array = 'shape * pointer"
+      , typedef "array" ["'elem", "'shape"] "'shape * pointer"
       , fundef "shape" ["(x,_)"] "x"
       ] @ type_defs @ entry_defs
   in
