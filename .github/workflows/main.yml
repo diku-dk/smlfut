@@ -7,11 +7,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Setup environment
-        run: |
-          echo "OS=$(uname -s | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
-          echo "RUNHOME=$(echo $HOME)" >> $GITHUB_ENV
-
       - name: Install Debian packages
         run: |
           sudo apt-get -qq update
