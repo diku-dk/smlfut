@@ -12,18 +12,13 @@ jobs:
           sudo apt-get -qq update
           sudo apt-get install -y make
 
-      - name: Install MLton
-        run: |
-          wget https://github.com/MLton/mlton/releases/download/on-20210117-release/mlton-20210117-1.amd64-linux-glibc2.31.tgz
-          tar xf mlton-20210117-1.amd64-linux-glibc2.31.tgz
-          make -C mlton-20210117-1.amd64-linux-glibc2.31 install PREFIX=$HOME/.local
-          rm -rf mlton-20210117-1.amd64-linux-glibc2.31*
-
+      - uses: diku-dk/install-mlton@v1.0.0
       - uses: diku-dk/install-mlkit@v1.0.0
       - uses: diku-dk/install-futhark@v1.1.0
 
       - name: Check
         run: |
+          mlton
           mlkit --version
           smlpkg --version
 
