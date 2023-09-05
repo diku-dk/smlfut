@@ -10,7 +10,7 @@ jobs:
       - name: Install Debian packages
         run: |
           sudo apt-get -qq update
-          sudo apt-get install -y mlton make
+          sudo apt-get install -y make
 
       - name: Install MLton
         run: |
