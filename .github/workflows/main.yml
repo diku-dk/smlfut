@@ -14,7 +14,7 @@ jobs:
 
       - name: Install MLton
         run: |
-          curl -O https://github.com/MLton/mlton/releases/download/on-20210117-release/mlton-20210117-1.amd64-linux-glibc2.31.tgz
+          wget https://github.com/MLton/mlton/releases/download/on-20210117-release/mlton-20210117-1.amd64-linux-glibc2.31.tgz
           tar xf mlton-20210117-1.amd64-linux-glibc2.31.tgz
           make -C mlton-20210117-1.amd64-linux-glibc2.31 install PREFIX=$HOME/.local
           rm -rf mlton-20210117-1.amd64-linux-glibc2.31*
