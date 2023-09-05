@@ -20,7 +20,7 @@ jobs:
         run: |
           mlton
           mlkit --version
-          smlpkg --version
+          futhark --version
 
       - run: |
           make run_test
