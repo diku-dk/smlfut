@@ -29,6 +29,12 @@ fun fundef fname args body =
 fun valspec fname params ret =
   "val " ^ fname ^ " : " ^ punctuate " -> " (params @ [ret])
 
+fun apply f args =
+    f ^ parens (punctuate ", " args)
+
+fun tapply f args =
+    parens (punctuate ", " args) ^ f
+
 fun writeFile fname s =
   let val os = TextIO.openOut fname
   in TextIO.output (os, s) before TextIO.closeOut os

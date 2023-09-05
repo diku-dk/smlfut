@@ -3,9 +3,9 @@ fun fficall cfun args ret =
   let
     val (arg_es, arg_ts) = ListPair.unzip args
   in
-    parens
-      ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret
-       ^ ";") ^ tuplify_e arg_es
+      apply
+          (parens ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret ^ ";"))
+          arg_es
   end
 
 fun isPrimType "i8" = SOME "Int8.int"
@@ -103,13 +103,13 @@ fun shapeTypeOfRank d =
 
 fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   let
-    val data_t = typeToSML elemtype ^ " Array.array"
+    val data_t = tapply "Array.array" [typeToSML elemtype]
     val shape =
       if rank = 1 then
         ["Int64.fromInt shape"]
       else
         List.tabulate (rank, fn i =>
-          "Int64.fromInt" ^ parens ("#" ^ Int.toString (i + 1) ^ " shape"))
+                                apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
     val shape_args = map (fn x => (x, "Int64.int")) shape
   in
     unlines
@@ -128,8 +128,9 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
           ["{ctx,cfg}", "(shape, data)"]
           (unlines
              [ "let"
-             , "val n = Int64.toInt"
-               ^ parens (foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape))
+             , "val n = " ^
+               apply "Int64.toInt"
+                     [foldl (fn (x, y) => x ^ "*" ^ y) (hd shape) (tl shape)]
              , "val out = Array.tabulate (n, fn i => " ^ blankRef elemtype ^ ")"
              , "val err = "
                ^
@@ -146,11 +147,11 @@ fun generateTypeDef (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
 fun generateTypeSpec (name, FUTHARK_ARRAY {ctype, rank, elemtype, ops}) =
   unlines
     [ valspec ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
-        ["ctx", typeToSML elemtype ^ " Array.array", shapeTypeOfRank rank]
-        (tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array")
+        ["ctx", tapply "Array.array" [typeToSML elemtype], shapeTypeOfRank rank]
+        (tapply "array" [shapeTypeOfRank rank, typeToSML elemtype])
     , valspec ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-        ["ctx", tuplify_e [shapeTypeOfRank rank, typeToSML elemtype] ^ " array"]
-        (typeToSML elemtype ^ " Array.array")
+        ["ctx", tapply "array" [shapeTypeOfRank rank, typeToSML elemtype]]
+        (tapply "Array.array" [typeToSML elemtype])
     ]
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
