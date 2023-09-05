@@ -126,7 +126,8 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
        ^
        fficall cfun
          ([("ctx", "futhark_context")] @ outArgs 0 outputs @ inpArgs 0 inputs)
-         "Int32.int" ^ "\nin" ^ tuplify_e (outRes 0 outputs) ^ " end")
+         "Int32.int" ^ "\nin error_check ret ctx; "
+       ^ tuplify_e (outRes 0 outputs) ^ " end")
   end
 
 fun shapeTypeOfRank d =
@@ -190,10 +191,33 @@ fun generateTypeDef manifest
       ]
   end
 
+(* Extracting the Futhark error string is somewhat tricky, for two reasons:
+
+1) We have to convert it to an SML string.
+
+2) We are responsible for freeing the C string.
+
+Our solution is to allocate an SML string, copy the C string into it,
+then free the C string.
+ *)
+val error_check: string = fundef "error_check" ["err", "ctx"] (unlines
+  [ "if err = 0 then () else"
+  , "let val p = "
+    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] "pointer"
+  , "val n = " ^ fficall "strlen" [("p", "pointer")] "Int64.int"
+  , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
+  , "in"
+  , fficall "strcpy" [("s", "string"), ("p", "pointer")] "unit" ^ ";"
+  , fficall "free" [("p", "pointer")] "unit" ^ ";"
+  , "raise error s"
+  , "end"
+  ])
+
+
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let
     val type_cfg = typedef "cfg" [] "{}"
-    val exn_fut = "exception futhark of string"
+    val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
     val type_specs = map (generateTypeSpec manifest) types
@@ -214,6 +238,8 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
       , typedef "futhark_context_config" [] "pointer"
       , typedef "futhark_context" [] "pointer"
       , "val default_cfg = {}"
+      , ""
+      , error_check
       , fundef "ctx_new" ["{}"] (unlines
           [ "let"
           , "val c_cfg ="

@@ -13,5 +13,8 @@ val () =
     ; Int32Array.app (fn x => print (Int32.toString x ^ " ")) arr_sml
     ; print "]\n"
     );
+    (Futhark.entry_fails ctx 0; raise (Fail "Should have failed."))
+    handle Futhark.error e => print ("Got error: " ^ e ^ "\n");
+    Futhark.entry_fails ctx 1;
     Futhark.ctx_free ctx
   end

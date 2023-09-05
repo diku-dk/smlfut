@@ -21,4 +21,5 @@ run_test: test/test
 	test/test
 
 clean:
-	rm -rf smlfut MLB src/MLBtest/MLB test/test.c test/test.h test/test.json test/test.sig test/test.sml
+	find src test -name MLB -exec rm -rf {} \;
+	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml
