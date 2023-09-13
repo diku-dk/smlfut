@@ -270,7 +270,7 @@ fun generateTypeDef manifest
              ])
       ]
 
-fun generate (manifest as MANIFEST {backend, entry_points, types}) =
+fun generate sig_name struct_name (manifest as MANIFEST {backend, entry_points, types}) =
   let
     val type_cfg = typedef "cfg" [] "{}"
     val exn_fut = "exception error of string"
@@ -317,8 +317,8 @@ fun generate (manifest as MANIFEST {backend, entry_points, types}) =
           ])
       ] @ type_defs @ entry_defs
   in
-    ( "signature FUTHARK = sig\n" ^ unlines specs ^ "end\n"
-    , "structure Futhark :> FUTHARK = struct\n" ^ unlines defs ^ "end\n"
+    ( "signature " ^ sig_name ^ " = sig\n" ^ unlines specs ^ "end\n"
+    , "structure " ^ struct_name ^  " :> " ^ sig_name ^ " = struct\n" ^ unlines defs ^ "end\n"
     )
   end
 
@@ -326,12 +326,14 @@ fun main () =
   case CommandLine.arguments () of
     [json_file] =>
       let
-        val m = manifestFromFile json_file
-        val (sig_s, mod_s) = generate m
         val base = Path.base json_file
+        val m = manifestFromFile json_file
+        val (sig_name, struct_name) =
+            (String.map Char.toUpper (Path.file base), (Path.file base))
+        val (sig_s, struct_s) = generate sig_name struct_name m
       in
         writeFile (base ^ ".sig") sig_s;
-        writeFile (base ^ ".sml") mod_s
+        writeFile (base ^ ".sml") struct_s
       end
   | _ =>
       ( TextIO.output (TextIO.stdErr, "Need a Futhark manifest file.\n")
