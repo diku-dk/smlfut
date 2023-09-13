@@ -1,0 +1,58 @@
+.Dd 2023
+.Dt SMLFUT 1
+.Os
+.
+.Sh NAME
+.Nm smlfut
+.Nd wrap Futhark program in Standard ML module
+.
+.Sh SYNOPSIS
+.Nm
+.Ar MANIFEST
+.Ek
+.
+.Sh DESCRIPTION
+.Nm
+allows SML programs to invoke Futhark programs via Futhark's C API.
+To use it, first compile the Futhark program with
+.Xr futhark 1
+using one of the C backends, then passing the generated JSON manifest
+file to
+.Nm .
+Given a manifest file "foo.json",
+.Nm
+will produce two files "foo.sig" and "foo.sml", containing a signature
+and structure definition respectively.  The name of the structure will
+be taken from the file basename (in this case "foo"), and the
+signature name will be the structure name in uppercase ("FOO").
+Ensure that the basename is a valid SML identifier.
+
+The generated files can be compiled with a Standard ML compiler,
+although currently only
+.Xr mlton 1
+(and perhaps MPL) is supported.  You must also link with the Futhark C
+code, and if you use a GPU backend pass any necessary linker flags to
+the Standard ML compiler.
+
+The generated interface directly exposes the C API, so it is very low
+level.  The only concession is that the C-style error codes are turned
+into SML exceptions.
+
+.Sh BUGS
+The generated code directly exposes the manual memory management
+required by Futhark's C interface.  If you neglect to free the values
+built using constructor functions or entry points, you will leak
+memory.  Freeing the context before freeing all associated values will
+also leak memory.
+
+Be careful not to mix values associated with different contexts.  They
+have the same type, so this is an easy mistake to make.
+.
+.Sh LICENSE
+.Nm
+itself is released under the GPLv3 or later.  The code
+.I generated
+by
+.Nm
+may be used for any purpose, without restrictions or requirements,
+without any need for attribution.
