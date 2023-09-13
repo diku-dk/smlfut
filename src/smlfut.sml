@@ -9,9 +9,22 @@ fun fficall cfun args ret =
           ^ ";")) arg_es
   end
 
+val null = "MLton.Pointer.null"
+
 fun smlArrayModule (info: array_info) =
   case #elemtype info of
-    "i32" => "Int32Array"
+    "i8" => "Int8Array"
+  | "i16" => "Int16Array"
+  | "i32" => "Int32Array"
+  | "i64" => "Int64Array"
+  | "u8" => "Word8Array"
+  | "u16" => "Word16Array"
+  | "u32" => "Word32Array"
+  | "u64" => "Word64Array"
+  | "bool" => "BoolArray"
+  | "f16" => "Real16Array"
+  | "f32" => "Real32Array"
+  | "f64" => "Real64Array"
   | _ =>
       raise Fail
         ("Cannot represent SML array with element type: " ^ #elemtype info)
@@ -44,18 +57,24 @@ fun typeToSML manifest t =
     SOME t' => futharkTypeToSML t'
   | NONE => primTypeToSML t
 
-fun blankRef "i8" = "Int8.fromInt 0"
-  | blankRef "i16" = "Int16.fromInt 0"
-  | blankRef "i32" = "Int32.fromInt 0"
-  | blankRef "i64" = "Int64.fromInt 0"
-  | blankRef "u8" = "Word8.fromInt 0"
-  | blankRef "u16" = "Word16.fromInt 0"
-  | blankRef "u32" = "Word32.fromInt 0"
-  | blankRef "u64" = "Word64.fromInt 0"
-  | blankRef "bool" = "false"
-  | blankRef "[]i32" = "MLton.Pointer.null"
-  | blankRef t =
-      raise Fail ("blankRef: " ^ t)
+fun blankRef manifest t =
+  case lookupType manifest t of
+    SOME _ => null
+  | NONE =>
+      case t of
+        "i8" => "Int8.fromInt 0"
+      | "i16" => "Int16.fromInt 0"
+      | "i32" => "Int32.fromInt 0"
+      | "i64" => "Int64.fromInt 0"
+      | "u8" => "Word8.fromInt 0"
+      | "u16" => "Word16.fromInt 0"
+      | "u32" => "Word32.fromInt 0"
+      | "u64" => "Word64.fromInt 0"
+      | "f16" => "Real16.fromInt 0"
+      | "f32" => "Real32.fromInt 0"
+      | "f64" => "Real64.fromInt 0"
+      | "bool" => "false"
+      | _ => raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
   valspec ("entry_" ^ name) ("ctx" :: map (typeToSML manifest o #type_) inputs)
@@ -65,13 +84,18 @@ fun mkSum [] = "0"
   | mkSum [x] = x
   | mkSum (x :: xs) = x ^ "+" ^ mkSum xs
 
+
+fun mkProd [] = "1"
+  | mkProd [x] = x
+  | mkProd (x :: xs) = x ^ "*" ^ mkProd xs
+
 fun mkSize (info: array_info) v =
   "let val shape_c = "
   ^
   fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")]
     "pointer" ^ " in "
   ^
-  mkSum (List.tabulate (#rank info, fn i =>
+  mkProd (List.tabulate (#rank info, fn i =>
     apply "Int64.toInt"
       [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
 
@@ -102,8 +126,8 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           end
     fun outDecs i [] = ""
       | outDecs i ({type_, unique = _} :: rest) =
-          "val out" ^ Int.toString i ^ " = ref (" ^ blankRef type_ ^ ")" ^ "\n"
-          ^ outDecs (i + 1) rest
+          "val out" ^ Int.toString i ^ " = ref (" ^ blankRef manifest type_
+          ^ ")" ^ "\n" ^ outDecs (i + 1) rest
     fun outArgs i [] = []
       | outArgs i (out :: rest) =
           ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref")
@@ -178,7 +202,9 @@ fun generateTypeDef manifest
              [ "let"
              , "val n = " ^ mkSize info "data"
              , "val out = "
-               ^ apply (smlArrayModule info ^ ".array") ["n", blankRef elemtype]
+               ^
+               apply (smlArrayModule info ^ ".array")
+                 ["n", blankRef manifest elemtype]
              , "val err = "
                ^
                fficall (#values ops)
