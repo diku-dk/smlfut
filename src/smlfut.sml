@@ -34,7 +34,11 @@ fun smlArrayType info = smlArrayModule info ^ ".array"
 fun futharkArrayType (info: array_info) =
   "array_" ^ #elemtype info ^ "_" ^ Int.toString (#rank info) ^ "d"
 
-fun futharkTypeToSML (FUTHARK_ARRAY info) = futharkArrayType info
+fun futharkOpaqueType name =
+  "opaque_" ^ name
+
+fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
+  | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueType name
 
 fun isPrimType "i8" = SOME "Int8.int"
   | isPrimType "i16" = SOME "Int16.int"
@@ -54,7 +58,7 @@ fun primTypeToSML t =
 
 fun typeToSML manifest t =
   case lookupType manifest t of
-    SOME t' => futharkTypeToSML t'
+    SOME t' => futharkTypeToSML t t'
   | NONE => primTypeToSML t
 
 fun blankRef manifest t =
@@ -143,7 +147,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
             val v = "inp" ^ Int.toString i
           in
             (case lookupType manifest type_ of
-               SOME (FUTHARK_ARRAY _) => "(_, " ^ v ^ ")"
+               SOME _ => "(_, " ^ v ^ ")"
              | _ => v) :: inpParams (i + 1) rest
           end
     fun outDecs i [] = ""
@@ -163,7 +167,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
             val v = "out" ^ Int.toString i
           in
             (case lookupType manifest (#type_ out) of
-               SOME (FUTHARK_ARRAY info) => tuplify_e ["ctx", "!" ^ v]
+               SOME _ => tuplify_e ["ctx", "!" ^ v]
              | _ => "!" ^ v) :: outRes (i + 1) rest
           end
   in
@@ -191,6 +195,12 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
         [futharkArrayType info] (shapeTypeOfRank (#rank info))
     , valspec ("values_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
         [futharkArrayType info] (smlArrayType info)
+    ]
+  | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
+    unlines
+    [ typespec (futharkOpaqueType name) []
+    , valspec ("free_" ^ futharkOpaqueType name)
+        [futharkOpaqueType name] "unit"
     ]
 
 fun generateTypeDef manifest
@@ -247,6 +257,18 @@ fun generateTypeDef manifest
              ])
       ]
   end
+  | generateTypeDef manifest (name, FUTHARK_OPAQUE (info as {ctype, ops})) =
+    unlines
+      [ typedef (futharkOpaqueType name) []
+          (tuplify_t ["futhark_context", "pointer"])
+      , fundef ("free_" ^ futharkOpaqueType name)
+          ["(ctx,data)"]
+          (apply "error_check"
+             [ (fficall (#free ops)
+                  ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
+             , "ctx"
+             ])
+      ]
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let

@@ -82,6 +82,11 @@ fun test_fails ctx =
     if String.isPrefix "Error: division by zero" e then ()
     else raise Fail ("Got unexpected error: " ^ e)
 
+fun test_record ctx =
+    let val record = Futhark.entry_mk_record ctx 2 true
+        val () = Futhark.free_opaque_record record
+    in () end
+
 val () =
   let
     val ctx = Futhark.ctx_new Futhark.default_cfg
@@ -94,6 +99,8 @@ val () =
     test ctx "text_f64" test_f64;
 
     test ctx "test_fails" test_fails;
+
+    test ctx "test_record" test_record;
 
     Futhark.ctx_free ctx
   end

@@ -12,7 +12,12 @@ type array_info =
   , ops: {free: string, new: string, shape: string, values: string}
   }
 
-datatype futhark_type = FUTHARK_ARRAY of array_info
+type opaque_info =
+  {ctype: string, ops: {free: string, store: string, restore: string}}
+
+datatype futhark_type =
+  FUTHARK_ARRAY of array_info
+| FUTHARK_OPAQUE of opaque_info
 
 datatype manifest =
   MANIFEST of
@@ -90,6 +95,12 @@ local
     , values = lookString obj "values"
     }
 
+  fun opaqueOps obj =
+    { free = lookString obj "free"
+    , store = lookString obj "store"
+    , restore = lookString obj "restore"
+    }
+
   fun typeFromJSON (name, Json.OBJECT obj) =
         ( name
         , case lookString obj "kind" of
@@ -99,6 +110,11 @@ local
                 , elemtype = lookString obj "elemtype"
                 , rank = lookInt obj "rank"
                 , ops = arrayOps (lookObj obj "ops")
+                }
+          | "opaque" =>
+              FUTHARK_OPAQUE
+                { ctype = lookString obj "ctype"
+                , ops = opaqueOps (lookObj obj "ops")
                 }
           | kind => raise Fail ("Cannot handle type of kind: " ^ kind)
         )

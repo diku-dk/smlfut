@@ -7,3 +7,7 @@ entry array_f64 (x: []f64) = map (+2) x ++ x
 entry transpose_i32 (x: [][]i32) = transpose x
 
 entry fails (x: i32) = 2/x
+
+type record = {a: i32, b: bool}
+
+entry mk_record (a: i32) (b: bool) : record = {a,b}
