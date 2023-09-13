@@ -109,6 +109,28 @@ fun mkShape (info: array_info) v =
     apply "Int64.toInt"
       [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
 
+(* Extracting the Futhark error string is somewhat tricky, for two reasons:
+
+1) We have to convert it to an SML string.
+
+2) We are responsible for freeing the C string.
+
+Our solution is to allocate an SML string, copy the C string into it,
+then free the C string.
+ *)
+val error_check: string = fundef "error_check" ["(err,ctx)"] (unlines
+  [ "if err = 0 then () else"
+  , "let val p = "
+    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] "pointer"
+  , "val n = " ^ fficall "strlen" [("p", "pointer")] "Int64.int"
+  , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
+  , "in"
+  , fficall "strcpy" [("s", "string"), ("p", "pointer")] "unit" ^ ";"
+  , fficall "free" [("p", "pointer")] "unit" ^ ";"
+  , "raise error s"
+  , "end"
+  ])
+
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
     fun apiType t =
@@ -150,7 +172,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
        ^
        fficall cfun
          ([("ctx", "futhark_context")] @ outArgs 0 outputs @ inpArgs 0 inputs)
-         "Int32.int" ^ "\nin error_check ret ctx; "
+         "Int32.int" ^ "\nin error_check(ret,ctx); "
        ^ tuplify_e (outRes 0 outputs) ^ " end")
   end
 
@@ -163,6 +185,8 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
     , valspec ("new_" ^ Int.toString (#rank info) ^ "d_" ^ #elemtype info)
         ["ctx", smlArrayType info, shapeTypeOfRank (#rank info)]
         (futharkArrayType info)
+    , valspec ("free_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
+        [futharkArrayType info] "unit"
     , valspec ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
         [futharkArrayType info] (shapeTypeOfRank (#rank info))
     , valspec ("values_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
@@ -195,6 +219,13 @@ fun generateTypeDef manifest
                  ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
                  "pointer"
              ])
+      , fundef ("free_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
+          ["(ctx,data)"]
+          (apply "error_check"
+             [ (fficall (#free ops)
+                  ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
+             , "ctx"
+             ])
       , fundef ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
           ["(ctx,data)"] (mkShape info "data")
       , fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype) ["(ctx, data)"]
@@ -216,29 +247,6 @@ fun generateTypeDef manifest
              ])
       ]
   end
-
-(* Extracting the Futhark error string is somewhat tricky, for two reasons:
-
-1) We have to convert it to an SML string.
-
-2) We are responsible for freeing the C string.
-
-Our solution is to allocate an SML string, copy the C string into it,
-then free the C string.
- *)
-val error_check: string = fundef "error_check" ["err", "ctx"] (unlines
-  [ "if err = 0 then () else"
-  , "let val p = "
-    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] "pointer"
-  , "val n = " ^ fficall "strlen" [("p", "pointer")] "Int64.int"
-  , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
-  , "in"
-  , fficall "strcpy" [("s", "string"), ("p", "pointer")] "unit" ^ ";"
-  , fficall "free" [("p", "pointer")] "unit" ^ ";"
-  , "raise error s"
-  , "end"
-  ])
-
 
 fun generate (manifest as MANIFEST {backend, entry_points, types}) =
   let

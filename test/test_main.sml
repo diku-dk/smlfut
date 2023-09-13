@@ -36,6 +36,8 @@ fun test_i32 ctx =
     val arr_in = Futhark.new_1d_i32 ctx (Int32Array.fromList [1, 2, 3]) 3
     val arr_out = Futhark.entry_array_i32 ctx arr_in
     val arr_sml = Futhark.values_1d_i32 arr_out
+    val () = Futhark.free_1d_i32 arr_in
+    val () = Futhark.free_1d_i32 arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [3, 4, 5, 1, 2, 3] then
       raise Fail "Unexpected result"
@@ -50,6 +52,8 @@ fun test_f64 ctx =
     val arr_out = Futhark.entry_array_f64 ctx arr_in
     val arr_sml = Futhark.values_1d_f64 arr_out
     val expected = Real64Array.fromList [3.0, 4.0, 5.0, 1.0, 2.0, 3.0]
+    val () = Futhark.free_1d_f64 arr_in
+    val () = Futhark.free_1d_f64 arr_out
   in
     if not (Real64ArrayTest.equal arr_sml expected) then
       raise Fail "Unexpected result"
@@ -63,6 +67,8 @@ fun test_transpose ctx =
       Futhark.new_2d_i32 ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6]) (2, 3)
     val arr_out = Futhark.entry_transpose_i32 ctx arr_in
     val arr_sml = Futhark.values_2d_i32 arr_out
+    val () = Futhark.free_2d_i32 arr_in
+    val () = Futhark.free_2d_i32 arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [1, 4, 2, 5, 3, 6] then
       raise Fail "Unexpected result."
