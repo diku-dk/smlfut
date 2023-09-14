@@ -352,6 +352,7 @@ fun generate sig_name struct_name
       , valspec "default_cfg" [] "cfg"
       , valspec "ctx_new" ["cfg"] "ctx"
       , valspec "ctx_free" ["ctx"] "unit"
+      , ""
       ] @ type_specs @ entry_specs
     val defs =
       [ typedef "pointer" [] "MLton.Pointer.t"
