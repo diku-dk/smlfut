@@ -12,8 +12,15 @@ type array_info =
   , ops: {free: string, new: string, shape: string, values: string}
   }
 
+type field = string * {project: string, type_: string}
+
+type record = {fields: field list, new: string}
+
 type opaque_info =
-  {ctype: string, ops: {free: string, store: string, restore: string}}
+  { ctype: string
+  , ops: {free: string, store: string, restore: string}
+  , record: record option
+  }
 
 datatype futhark_type =
   FUTHARK_ARRAY of array_info
@@ -101,6 +108,12 @@ local
     , restore = lookString obj "restore"
     }
 
+  fun fieldFromJSON (Json.OBJECT obj) =
+        ( lookString obj "name"
+        , {type_ = lookString obj "type", project = lookString obj "project"}
+        )
+    | fieldFromJSON _ = raise Fail "Invalid field in manifest."
+
   fun typeFromJSON (name, Json.OBJECT obj) =
         ( name
         , case lookString obj "kind" of
@@ -115,6 +128,16 @@ local
               FUTHARK_OPAQUE
                 { ctype = lookString obj "ctype"
                 , ops = opaqueOps (lookObj obj "ops")
+                , record =
+                    case Json.objLook obj "record" of
+                      NONE => NONE
+                    | SOME (Json.OBJECT robj) =>
+                        SOME
+                          { new = lookString robj "new"
+                          , fields = (map fieldFromJSON
+                              (lookArray robj "fields"))
+                          }
+                    | SOME _ => raise Fail "Invalid record in manifest."
                 }
           | kind => raise Fail ("Cannot handle type of kind: " ^ kind)
         )

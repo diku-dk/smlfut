@@ -1,6 +1,7 @@
 val unlines = concat o map (fn s => s ^ "\n")
 
 fun parens s = "(" ^ s ^ ")"
+fun braces s = "{" ^ s ^ "}"
 
 fun intersperse y [] = []
   | intersperse y [x] = [x]
@@ -28,6 +29,12 @@ fun apply f args =
 
 fun tapply f [] = f
   | tapply f args = parens (punctuate ", " args) ^ f
+
+fun record_e fs =
+    braces (punctuate "," (map (fn (f,t) => f ^ "=" ^ t) fs))
+
+fun record_t fs =
+    braces (punctuate "," (map (fn (f,t) => f ^ ":" ^ t) fs))
 
 fun fundef fname args body =
   "fun " ^ fname ^ " " ^ punctuate " " args ^ " =\n" ^ body

@@ -85,9 +85,13 @@ fun test_fails ctx =
     else raise Fail ("Got unexpected error: " ^ e)
 
 fun test_record ctx =
-    let val record = Futhark.entry_mk_record ctx 2 true
-        val () = Futhark.free_opaque_record record
-    in () end
+    let val record = Futhark.from_record_opaque_record ctx {a=2,b=true}
+        val {a,b} = Futhark.to_record_opaque_record record
+    in if a <> 2 orelse b <> true then
+           raise Fail "Unexpected result."
+       else ();
+       Futhark.free_opaque_record record
+    end
 
 val () =
   let
