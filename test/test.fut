@@ -11,3 +11,7 @@ entry fails (x: i32) = 2/x
 type record = {a: i32, b: bool}
 
 entry mk_record (a: i32) (b: bool) : record = {a,b}
+
+type sum_opaque = #foo i32
+
+entry mk_sum_opaque x : sum_opaque = #foo x

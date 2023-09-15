@@ -35,11 +35,11 @@ fun test ctx name f =
 
 fun test_i32 ctx =
   let
-    val arr_in = Futhark.new_1d_i32 ctx (Int32Array.fromList [1, 2, 3]) 3
+    val arr_in = Futhark.array_1d_i32.new ctx (Int32Array.fromList [1, 2, 3]) 3
     val arr_out = Futhark.entry_array_i32 ctx arr_in
-    val arr_sml = Futhark.values_1d_i32 arr_out
-    val () = Futhark.free_1d_i32 arr_in
-    val () = Futhark.free_1d_i32 arr_out
+    val arr_sml = Futhark.array_1d_i32.values arr_out
+    val () = Futhark.array_1d_i32.free arr_in
+    val () = Futhark.array_1d_i32.free arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [3, 4, 5, 1, 2, 3] then
       raise Fail "Unexpected result"
@@ -50,12 +50,12 @@ fun test_i32 ctx =
 
 fun test_f64 ctx =
   let
-    val arr_in = Futhark.new_1d_f64 ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
+    val arr_in = Futhark.array_1d_f64.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
     val arr_out = Futhark.entry_array_f64 ctx arr_in
-    val arr_sml = Futhark.values_1d_f64 arr_out
+    val arr_sml = Futhark.array_1d_f64.values arr_out
     val expected = Real64Array.fromList [3.0, 4.0, 5.0, 1.0, 2.0, 3.0]
-    val () = Futhark.free_1d_f64 arr_in
-    val () = Futhark.free_1d_f64 arr_out
+    val () = Futhark.array_1d_f64.free arr_in
+    val () = Futhark.array_1d_f64.free arr_out
   in
     if not (Real64ArrayTest.equal arr_sml expected) then
       raise Fail "Unexpected result"
@@ -66,11 +66,11 @@ fun test_f64 ctx =
 fun test_transpose ctx =
   let
     val arr_in =
-      Futhark.new_2d_i32 ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6]) (2, 3)
+      Futhark.array_2d_i32.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6]) (2, 3)
     val arr_out = Futhark.entry_transpose_i32 ctx arr_in
-    val arr_sml = Futhark.values_2d_i32 arr_out
-    val () = Futhark.free_2d_i32 arr_in
-    val () = Futhark.free_2d_i32 arr_out
+    val arr_sml = Futhark.array_2d_i32.values arr_out
+    val () = Futhark.array_2d_i32.free arr_in
+    val () = Futhark.array_2d_i32.free arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [1, 4, 2, 5, 3, 6] then
       raise Fail "Unexpected result."
@@ -85,12 +85,12 @@ fun test_fails ctx =
     else raise Fail ("Got unexpected error: " ^ e)
 
 fun test_record ctx =
-    let val record = Futhark.from_record_opaque_record ctx {a=2,b=true}
-        val {a,b} = Futhark.to_record_opaque_record record
+    let val record = Futhark.opaque_record.from_record ctx {a=2,b=true}
+        val {a,b} = Futhark.opaque_record.to_record record
     in if a <> 2 orelse b <> true then
            raise Fail "Unexpected result."
        else ();
-       Futhark.free_opaque_record record
+       Futhark.opaque_record.free record
     end
 
 val () =

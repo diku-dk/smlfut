@@ -31,10 +31,14 @@ fun smlArrayModule (info: array_info) =
 
 fun smlArrayType info = smlArrayModule info ^ ".array"
 
-fun futharkArrayType (info: array_info) =
-  "array_" ^ #elemtype info ^ "_" ^ Int.toString (#rank info) ^ "d"
+fun futharkArrayStruct (info: array_info) =
+  "array_" ^ Int.toString (#rank info) ^ "d" ^ "_" ^ #elemtype info
 
-fun futharkOpaqueType name = "opaque_" ^ name
+fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
+
+fun futharkOpaqueStruct name = "opaque_" ^ name
+
+fun futharkOpaqueType name = futharkOpaqueStruct name ^ ".t"
 
 fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
   | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueType name
@@ -182,84 +186,32 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
 fun shapeTypeOfRank d =
   (tuplify_t o replicate d) "int"
 
-fun generateRecordSpec manifest name {new, fields} =
-  let
-    fun fieldType (name, {project, type_}) =
-      (name, typeToSML manifest type_)
-  in
-    unlines
-      [ valspec ("to_record_" ^ futharkOpaqueType name) [futharkOpaqueType name]
-          (record_t (map fieldType fields))
-      , valspec ("from_record_" ^ futharkOpaqueType name)
-          ["ctx", (record_t (map fieldType fields))] (futharkOpaqueType name)
-      ]
-  end
-
 fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
       unlines
-        [ typespec (futharkArrayType info) []
-        , valspec ("new_" ^ Int.toString (#rank info) ^ "d_" ^ #elemtype info)
-            ["ctx", smlArrayType info, shapeTypeOfRank (#rank info)]
-            (futharkArrayType info)
-        , valspec
-            ("free_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
-            [futharkArrayType info] "unit"
-        , valspec
-            ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
-            [futharkArrayType info] (shapeTypeOfRank (#rank info))
-        , valspec
-            ("values_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
-            [futharkArrayType info] (smlArrayType info)
+        [ "structure " ^ futharkArrayStruct info ^ " : FUTHARK_ARRAY"
+        , "where type ctx = ctx"
+        , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+        , "  and type native.array = " ^ smlArrayModule info ^ ".array"
+        , "  and type native.elem = " ^ smlArrayModule info ^ ".elem"
         ]
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
-      unlines
-        [ typespec (futharkOpaqueType name) []
-        , valspec ("free_" ^ futharkOpaqueType name) [futharkOpaqueType name]
-            "unit"
-        ]
-      ^
-      (case #record info of
-         NONE => ""
-       | SOME record => generateRecordSpec manifest name record)
-
-fun generateRecordDefs manifest name {new, fields} =
-  let
-    fun getField (name, {project, type_}) =
-      ( name
-      , "let val out = ref " ^ parens (blankRef manifest type_) ^ "in "
-        ^
-        apply "error_check"
-          [ fficall project
-              [ ("ctx", "futhark_context")
-              , ("out", typeToSML manifest type_ ^ " ref")
-              , ("data", "pointer")
-              ] "int"
-          , "ctx"
-          ] ^ "; "
-        ^
-        (case lookupType manifest type_ of
-           SOME _ => tuplify_e ["ctx", "!out"]
-         | _ => "!out") ^ " end"
-      )
-    fun fieldParam (name, _) = (name, name)
-    fun fieldArg (name, {project, type_}) =
-      (name, typeToSML manifest type_)
-  in
-    unlines
-      [ fundef ("to_record_" ^ futharkOpaqueType name) ["(ctx,data)"] (record_e
-          (map getField fields))
-      , fundef ("from_record_" ^ futharkOpaqueType name)
-          ["{cfg,ctx}", record_e (map fieldParam fields)]
-          ("let val out = ref " ^ null ^ " in "
-           ^
-           apply "error_check"
-             [ (fficall new
-                  ([("ctx", "futhark_context"), ("out", "pointer ref")]
-                   @ map fieldArg fields) "int")
-             , "ctx"
-             ] ^ ";(ctx,!out) end")
-      ]
-  end
+      case #record info of
+        NONE =>
+          unlines
+            [ "structure " ^ futharkOpaqueStruct name ^ " : FUTHARK_OPAQUE"
+            , "where type ctx = ctx"
+            ]
+      | SOME record =>
+          let
+            fun fieldType (name, {project, type_}) =
+              (name, typeToSML manifest type_)
+          in
+            unlines
+              [ "structure " ^ futharkOpaqueStruct name ^ " : FUTHARK_RECORD"
+              , "where type ctx = ctx"
+              , "  and type record = " ^ record_t (map fieldType (#fields record))
+              ]
+          end
 
 fun generateTypeDef manifest
       (name, FUTHARK_ARRAY (info as {ctype, rank, elemtype, ops})) =
@@ -274,9 +226,12 @@ fun generateTypeDef manifest
         val shape_args = map (fn x => (x, "Int64.int")) shape
       in
         unlines
-          [ typedef (futharkArrayType info) []
-              (tuplify_t ["futhark_context", "pointer"])
-          , fundef ("new_" ^ Int.toString rank ^ "d_" ^ elemtype)
+          [ "structure " ^ futharkArrayStruct info ^ " = struct"
+          , typedef "array" [] (tuplify_t ["futhark_context", "pointer"])
+          , typedef "ctx" [] "ctx"
+          , typedef "shape" [] (shapeTypeOfRank rank)
+          , "structure native = " ^ smlArrayModule info
+          , fundef "new"
               [ "{ctx,cfg}"
               , parens ("data: " ^ data_t)
               , parens ("shape: " ^ shapeTypeOfRank rank)
@@ -287,53 +242,125 @@ fun generateTypeDef manifest
                      ([("ctx", "futhark_context"), ("data", data_t)]
                       @ shape_args) "pointer"
                  ])
-          , fundef
-              ("free_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
-              ["(ctx,data)"]
-              (apply "error_check"
-                 [ (fficall (#free ops)
-                      ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
-                 , "ctx"
-                 ])
-          , fundef
-              ("shape_" ^ Int.toString (#rank info) ^ "d_" ^ (#elemtype info))
-              ["(ctx,data)"] (mkShape info "data")
-          , fundef ("values_" ^ Int.toString rank ^ "d_" ^ elemtype)
-              ["(ctx, data)"]
-              (unlines
-                 [ "let"
-                 , "val n = " ^ mkSize info "data"
-                 , "val out = "
-                   ^
-                   apply (smlArrayModule info ^ ".array")
-                     ["n", blankRef manifest elemtype]
-                 , "val err = "
-                   ^
-                   fficall (#values ops)
-                     [ ("ctx", "futhark_context")
-                     , ("data", "pointer")
-                     , ("out", data_t)
-                     ] "Int32.int"
-                 , "in out end"
-                 ])
+          , fundef "free" ["(ctx,data)"] (apply "error_check"
+              [ (fficall (#free ops)
+                   ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
+              , "ctx"
+              ])
+          , fundef "shape" ["(ctx,data)"] (mkShape info "data")
+          , fundef "values" ["(ctx, data)"] (unlines
+              [ "let"
+              , "val n = " ^ mkSize info "data"
+              , "val out = "
+                ^
+                apply (smlArrayModule info ^ ".array")
+                  ["n", blankRef manifest elemtype]
+              , "val err = "
+                ^
+                fficall (#values ops)
+                  [ ("ctx", "futhark_context")
+                  , ("data", "pointer")
+                  , ("out", data_t)
+                  ] "Int32.int"
+              , "in out end"
+              ])
+          , "end"
           ]
       end
-  | generateTypeDef manifest
-      (name, FUTHARK_OPAQUE (info as {ctype, ops, record})) =
-      unlines
-        [ typedef (futharkOpaqueType name) []
-            (tuplify_t ["futhark_context", "pointer"])
-        , fundef ("free_" ^ futharkOpaqueType name) ["(ctx,data)"]
-            (apply "error_check"
-               [ (fficall (#free ops)
+  | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
+      let
+        val more =
+          case #record info of
+            NONE => []
+          | SOME record =>
+              let
+                fun getField (name, {project, type_}) =
+                  ( name
+                  , "let val out = ref " ^ parens (blankRef manifest type_)
+                    ^ "in "
+                    ^
+                    apply "error_check"
+                      [ fficall project
+                          [ ("ctx", "futhark_context")
+                          , ("out", typeToSML manifest type_ ^ " ref")
+                          , ("data", "pointer")
+                          ] "int"
+                      , "ctx"
+                      ] ^ "; "
+                    ^
+                    (case lookupType manifest type_ of
+                       SOME _ => tuplify_e ["ctx", "!out"]
+                     | _ => "!out") ^ " end"
+                  )
+                fun fieldParam (name, _) = (name, name)
+                fun fieldArg (name, {project, type_}) =
+                  (name, typeToSML manifest type_)
+                fun fieldType (name, {project, type_}) =
+                  (name, typeToSML manifest type_)
+              in
+                  [ typedef "record" [] (record_t
+                      (map fieldType (#fields record)))
+                  , fundef "to_record" ["(ctx,data)"] (record_e
+                      (map getField (#fields record)))
+                  , fundef "from_record"
+                      ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
+                      ("let val out = ref " ^ null ^ " in "
+                       ^
+                       apply "error_check"
+                         [ (fficall (#new record)
+                              ([ ("ctx", "futhark_context")
+                               , ("out", "pointer ref")
+                               ] @ map fieldArg (#fields record)) "int")
+                         , "ctx"
+                         ] ^ ";(ctx,!out) end")
+                  ]
+              end
+      in
+        unlines
+          ([ "structure " ^ futharkOpaqueStruct name ^ " = struct"
+           , typedef "ctx" [] "ctx"
+           , typedef "t" [] (tuplify_t ["futhark_context", "pointer"])
+           , fundef "free" ["(ctx,data)"] (apply "error_check"
+               [ (fficall (#free (#ops info))
                     ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
                , "ctx"
                ])
-        ]
-      ^
-      (case record of
-         NONE => ""
-       | SOME record => generateRecordDefs manifest name record)
+           ] @ more @ ["end"])
+      end
+
+val array_signature =
+  [ "signature FUTHARK_ARRAY ="
+  , "sig"
+  , "type array"
+  , "type ctx"
+  , "type shape"
+  , "structure native : MONO_ARRAY"
+  , "val new: ctx -> native.array -> shape -> array"
+  , "val free: array -> unit"
+  , "val shape: array -> shape"
+  , "val values: array -> native.array"
+  , "end"
+  ]
+
+
+val opaque_signature =
+  [ "signature FUTHARK_OPAQUE ="
+  , "sig"
+  , "type t"
+  , "type ctx"
+  , "val free : t -> unit"
+  , "end"
+  ]
+
+val record_signature =
+  [ "signature FUTHARK_RECORD ="
+  , "sig"
+  , "include FUTHARK_OPAQUE"
+  , "type record"
+  , "val to_record : t -> record"
+  , "val from_record : ctx -> record -> t"
+  , "end"
+  ]
 
 fun generate sig_name struct_name
   (manifest as MANIFEST {backend, entry_points, types}) =
@@ -384,7 +411,9 @@ fun generate sig_name struct_name
           ])
       ] @ type_defs @ entry_defs
   in
-    ( unlines (["signature " ^ sig_name ^ " = sig"] @ specs @ ["end"])
+    ( unlines
+        (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
+         @ ["", "signature " ^ sig_name ^ " = sig"] @ specs @ ["end"])
     , unlines
         (["structure " ^ struct_name ^ " :> " ^ sig_name ^ " = struct"] @ defs
          @ ["end"])
