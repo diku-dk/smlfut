@@ -3,8 +3,8 @@
 `smlfut` allows SML programs to invoke Futhark programs via Futhark's
 C API.  This is done by reading the manifest file emitted by the
 Futhark compiler, then generating appropriate wrapper code.  For more
-information see [the manual](smlfut.1).  (Easier to read in a
-terminal.)
+information see [the
+manual](https://github.com/diku-dk/smlfut/releases/download/latest/smlfut.html).
 
 ## Installation
 
