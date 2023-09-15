@@ -1,3 +1,5 @@
+(* FFI stuff *)
+
 (* Invoke named C function with the provided (SML) arguments and return type *)
 fun fficall cfun args ret =
   let
@@ -9,7 +11,29 @@ fun fficall cfun args ret =
           ^ ";")) arg_es
   end
 
+val pointer = "MLton.Pointer.t"
 val null = "MLton.Pointer.null"
+
+(* Actual logic. *)
+
+fun isPrimType "i8" = SOME "Int8.int"
+  | isPrimType "i16" = SOME "Int16.int"
+  | isPrimType "i32" = SOME "Int32.int"
+  | isPrimType "i64" = SOME "Int64.int"
+  | isPrimType "u8" = SOME "Word8.word"
+  | isPrimType "u16" = SOME "Word16.word"
+  | isPrimType "u32" = SOME "Word32.word"
+  | isPrimType "u64" = SOME "Word64.word"
+  | isPrimType "f16" = SOME "Real16.real"
+  | isPrimType "f32" = SOME "Real32.real"
+  | isPrimType "f64" = SOME "Real64.real"
+  | isPrimType "bool" = SOME "Bool.bool"
+  | isPrimType _ = NONE
+
+fun primTypeToSML t =
+  case isPrimType t of
+    SOME t' => t'
+  | NONE => raise Fail ("Cannot map type to SML: " ^ t)
 
 fun smlArrayModule (info: array_info) =
   case #elemtype info of
@@ -32,7 +56,7 @@ fun smlArrayModule (info: array_info) =
 fun smlArrayType info = smlArrayModule info ^ ".array"
 
 fun futharkArrayStruct (info: array_info) =
-  "array_" ^ Int.toString (#rank info) ^ "d" ^ "_" ^ #elemtype info
+    smlArrayModule info ^ Int.toString (#rank info)
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
@@ -42,22 +66,6 @@ fun futharkOpaqueType name = futharkOpaqueStruct name ^ ".t"
 
 fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
   | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueType name
-
-fun isPrimType "i8" = SOME "Int8.int"
-  | isPrimType "i16" = SOME "Int16.int"
-  | isPrimType "i32" = SOME "Int32.int"
-  | isPrimType "i64" = SOME "Int64.int"
-  | isPrimType "u8" = SOME "Word8.word"
-  | isPrimType "u16" = SOME "Word16.word"
-  | isPrimType "u32" = SOME "Word32.word"
-  | isPrimType "u64" = SOME "Word64.word"
-  | isPrimType "bool" = SOME "bool"
-  | isPrimType _ = NONE
-
-fun primTypeToSML t =
-  case isPrimType t of
-    SOME t' => t'
-  | NONE => raise Fail ("Cannot map type to SML: " ^ t)
 
 fun typeToSML manifest t =
   case lookupType manifest t of
@@ -99,8 +107,8 @@ fun mkProd [] = "1"
 fun mkSize (info: array_info) v =
   "let val shape_c = "
   ^
-  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")]
-    "pointer" ^ " in "
+  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+    pointer ^ " in "
   ^
   mkProd (List.tabulate (#rank info, fn i =>
     apply "Int64.toInt"
@@ -109,8 +117,8 @@ fun mkSize (info: array_info) v =
 fun mkShape (info: array_info) v =
   "let val shape_c = "
   ^
-  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, "pointer")]
-    "pointer" ^ " in "
+  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+    pointer ^ " in "
   ^
   tuplify_e (List.tabulate (#rank info, fn i =>
     apply "Int64.toInt"
@@ -128,12 +136,12 @@ then free the C string.
 val error_check: string = fundef "error_check" ["(err,ctx)"] (unlines
   [ "if err = 0 then () else"
   , "let val p = "
-    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] "pointer"
-  , "val n = " ^ fficall "strlen" [("p", "pointer")] "Int64.int"
+    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
+  , "val n = " ^ fficall "strlen" [("p", pointer)] "Int64.int"
   , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
   , "in"
-  , fficall "strcpy" [("s", "string"), ("p", "pointer")] "unit" ^ ";"
-  , fficall "free" [("p", "pointer")] "unit" ^ ";"
+  , fficall "strcpy" [("s", "string"), ("p", pointer)] "unit" ^ ";"
+  , fficall "free" [("p", pointer)] "unit" ^ ";"
   , "raise error s"
   , "end"
   ])
@@ -143,7 +151,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
     fun apiType t =
       case isPrimType t of
         SOME t' => t'
-      | NONE => "pointer"
+      | NONE => pointer
     fun inpParams i [] = []
       | inpParams i ({name = _, type_, unique = _} :: rest) =
           let
@@ -223,7 +231,7 @@ fun generateTypeDef manifest
         val shape_args = map (fn x => (x, "Int64.int")) shape
       in
         structdef (futharkArrayStruct info) NONE
-          [ typedef "array" [] (tuplify_t ["futhark_context", "pointer"])
+          [ typedef "array" [] (tuplify_t ["futhark_context", pointer])
           , typedef "ctx" [] "ctx"
           , typedef "shape" [] (shapeTypeOfRank rank)
           , "structure native = " ^ smlArrayModule info
@@ -236,11 +244,11 @@ fun generateTypeDef manifest
                  [ "ctx"
                  , fficall (#new ops)
                      ([("ctx", "futhark_context"), ("data", data_t)]
-                      @ shape_args) "pointer"
+                      @ shape_args) pointer
                  ])
           , fundef "free" ["(ctx,data)"] (apply "error_check"
               [ (fficall (#free ops)
-                   ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
+                   ([("ctx", "futhark_context"), ("data", pointer)]) "int")
               , "ctx"
               ])
           , fundef "shape" ["(ctx,data)"] (mkShape info "data")
@@ -255,7 +263,7 @@ fun generateTypeDef manifest
                 ^
                 fficall (#values ops)
                   [ ("ctx", "futhark_context")
-                  , ("data", "pointer")
+                  , ("data", pointer)
                   , ("out", data_t)
                   ] "Int32.int"
               , "in out end"
@@ -278,7 +286,7 @@ fun generateTypeDef manifest
                       [ fficall project
                           [ ("ctx", "futhark_context")
                           , ("out", typeToSML manifest type_ ^ " ref")
-                          , ("data", "pointer")
+                          , ("data", pointer)
                           ] "int"
                       , "ctx"
                       ] ^ "; "
@@ -304,7 +312,7 @@ fun generateTypeDef manifest
                      apply "error_check"
                        [ (fficall (#new record)
                             ([ ("ctx", "futhark_context")
-                             , ("out", "pointer ref")
+                             , ("out", pointer ^ " ref")
                              ] @ map fieldArg (#fields record)) "int")
                        , "ctx"
                        ] ^ ";(ctx,!out) end")
@@ -313,10 +321,10 @@ fun generateTypeDef manifest
       in
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
-           , typedef "t" [] (tuplify_t ["futhark_context", "pointer"])
+           , typedef "t" [] (tuplify_t ["futhark_context", pointer])
            , fundef "free" ["(ctx,data)"] (apply "error_check"
                [ (fficall (#free (#ops info))
-                    ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
+                    ([("ctx", "futhark_context"), ("data", pointer)]) "int")
                , "ctx"
                ])
            ] @ more)
@@ -384,12 +392,11 @@ fun generate sig_name struct_name
       ] @ type_specs @ ["", "structure Entry : sig"] @ map indent entry_specs
       @ ["end"]
     val defs =
-      [ typedef "pointer" [] "MLton.Pointer.t"
-      , typedef "ctx" [] "{cfg: pointer, ctx: pointer}"
+      [ typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
       , exn_fut
       , type_cfg
-      , typedef "futhark_context_config" [] "pointer"
-      , typedef "futhark_context" [] "pointer"
+      , typedef "futhark_context_config" [] pointer
+      , typedef "futhark_context" [] pointer
       , "val default_cfg = " ^ def_cfg
       , ""
       , error_check

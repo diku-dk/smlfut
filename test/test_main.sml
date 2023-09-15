@@ -35,12 +35,12 @@ fun test ctx name f =
 
 fun test_i32 ctx =
   let
-    val arr_in = Futhark.array_1d_i32.new ctx (Int32Array.fromList [1, 2, 3]) 3
+    val arr_in = Futhark.Int32Array1.new ctx (Int32Array.fromList [1, 2, 3]) 3
     val arr_out = Futhark.Entry.array_i32 ctx arr_in
-    val arr_sml = Futhark.array_1d_i32.values arr_out
+    val arr_sml = Futhark.Int32Array1.values arr_out
     val () = Futhark.ctx_sync ctx
-    val () = Futhark.array_1d_i32.free arr_in
-    val () = Futhark.array_1d_i32.free arr_out
+    val () = Futhark.Int32Array1.free arr_in
+    val () = Futhark.Int32Array1.free arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [3, 4, 5, 1, 2, 3] then
       raise Fail "Unexpected result"
@@ -52,13 +52,13 @@ fun test_i32 ctx =
 fun test_f64 ctx =
   let
     val arr_in =
-      Futhark.array_1d_f64.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
+      Futhark.Real64Array1.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
     val arr_out = Futhark.Entry.array_f64 ctx arr_in
-    val arr_sml = Futhark.array_1d_f64.values arr_out
+    val arr_sml = Futhark.Real64Array1.values arr_out
     val () = Futhark.ctx_sync ctx
     val expected = Real64Array.fromList [3.0, 4.0, 5.0, 1.0, 2.0, 3.0]
-    val () = Futhark.array_1d_f64.free arr_in
-    val () = Futhark.array_1d_f64.free arr_out
+    val () = Futhark.Real64Array1.free arr_in
+    val () = Futhark.Real64Array1.free arr_out
   in
     if not (Real64ArrayTest.equal arr_sml expected) then
       raise Fail "Unexpected result"
@@ -69,13 +69,13 @@ fun test_f64 ctx =
 fun test_transpose ctx =
   let
     val arr_in =
-      Futhark.array_2d_i32.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6])
+      Futhark.Int32Array2.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6])
         (2, 3)
     val arr_out = Futhark.Entry.transpose_i32 ctx arr_in
-    val arr_sml = Futhark.array_2d_i32.values arr_out
+    val arr_sml = Futhark.Int32Array2.values arr_out
     val () = Futhark.ctx_sync ctx
-    val () = Futhark.array_2d_i32.free arr_in
-    val () = Futhark.array_2d_i32.free arr_out
+    val () = Futhark.Int32Array2.free arr_in
+    val () = Futhark.Int32Array2.free arr_out
   in
     if Int32ArrayTest.toList arr_sml <> [1, 4, 2, 5, 3, 6] then
       raise Fail "Unexpected result."
