@@ -36,7 +36,7 @@ fun test ctx name f =
 fun test_i32 ctx =
   let
     val arr_in = Futhark.array_1d_i32.new ctx (Int32Array.fromList [1, 2, 3]) 3
-    val arr_out = Futhark.entry_array_i32 ctx arr_in
+    val arr_out = Futhark.Entry.array_i32 ctx arr_in
     val arr_sml = Futhark.array_1d_i32.values arr_out
     val () = Futhark.ctx_sync ctx
     val () = Futhark.array_1d_i32.free arr_in
@@ -53,7 +53,7 @@ fun test_f64 ctx =
   let
     val arr_in =
       Futhark.array_1d_f64.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
-    val arr_out = Futhark.entry_array_f64 ctx arr_in
+    val arr_out = Futhark.Entry.array_f64 ctx arr_in
     val arr_sml = Futhark.array_1d_f64.values arr_out
     val () = Futhark.ctx_sync ctx
     val expected = Real64Array.fromList [3.0, 4.0, 5.0, 1.0, 2.0, 3.0]
@@ -71,7 +71,7 @@ fun test_transpose ctx =
     val arr_in =
       Futhark.array_2d_i32.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6])
         (2, 3)
-    val arr_out = Futhark.entry_transpose_i32 ctx arr_in
+    val arr_out = Futhark.Entry.transpose_i32 ctx arr_in
     val arr_sml = Futhark.array_2d_i32.values arr_out
     val () = Futhark.ctx_sync ctx
     val () = Futhark.array_2d_i32.free arr_in
@@ -84,7 +84,7 @@ fun test_transpose ctx =
   end
 
 fun test_fails ctx =
-  ( Futhark.entry_fails ctx 0
+  ( Futhark.Entry.fails ctx 0
   ; Futhark.ctx_sync ctx
   ; raise Fail "Should have failed."
   )
@@ -104,7 +104,7 @@ fun test_record ctx =
 val () =
   let
     val ctx = Futhark.ctx_new Futhark.default_cfg
-    val x = Futhark.entry_main ctx 0w123
+    val x = Futhark.Entry.main ctx 0w123
   in
     test_i32 ctx;
 

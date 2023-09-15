@@ -84,7 +84,7 @@ fun blankRef manifest t =
       | _ => raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
-  valspec ("entry_" ^ name) ("ctx" :: map (typeToSML manifest o #type_) inputs)
+  valspec name ("ctx" :: map (typeToSML manifest o #type_) inputs)
     (tuplify_t (map (typeToSML manifest o #type_) outputs))
 
 fun mkSum [] = "0"
@@ -174,7 +174,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
              | _ => "!" ^ v) :: outRes (i + 1) rest
           end
   in
-    fundef ("entry_" ^ name) (["{cfg,ctx}"] @ (inpParams 0 inputs))
+    fundef name (["{cfg,ctx}"] @ (inpParams 0 inputs))
       ("let\n" ^ outDecs 0 outputs ^ "val ret = "
        ^
        fficall cfun
@@ -386,7 +386,7 @@ fun generate sig_name struct_name
       , valspec "ctx_free" ["ctx"] "unit"
       , valspec "ctx_sync" ["ctx"] "unit"
       , ""
-      ] @ type_specs @ entry_specs
+      ] @ type_specs @ ["structure Entry : sig"] @ entry_specs @ ["end"]
     val defs =
       [ typedef "pointer" [] "MLton.Pointer.t"
       , typedef "ctx" [] "{cfg: pointer, ctx: pointer}"
@@ -438,7 +438,7 @@ fun generate sig_name struct_name
           [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
           , "ctx"
           ])
-      ] @ type_defs @ entry_defs
+      ] @ type_defs @ ["structure Entry = struct"] @ entry_defs @ ["end"]
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
