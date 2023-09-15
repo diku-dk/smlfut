@@ -24,3 +24,27 @@ jobs:
 
       - run: |
           make run_test
+
+  build_html:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Git repository
+        uses: actions/checkout@v2
+
+      - name: Install Debian packages
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get install -y mandoc
+
+      - name: Install Debian packages
+        run: |
+          mandoc -T html ./smlfut.1 > smlfut.html
+
+      - uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: "${{ secrets.GITHUB_TOKEN }}"
+          automatic_release_tag: "latest"
+          prerelease: true
+          title: "Manpage"
+          files: |
+            smlfut.html
