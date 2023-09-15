@@ -209,7 +209,8 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
             unlines
               [ "structure " ^ futharkOpaqueStruct name ^ " : FUTHARK_RECORD"
               , "where type ctx = ctx"
-              , "  and type record = " ^ record_t (map fieldType (#fields record))
+              , "  and type record = "
+                ^ record_t (map fieldType (#fields record))
               ]
           end
 
@@ -298,22 +299,22 @@ fun generateTypeDef manifest
                 fun fieldType (name, {project, type_}) =
                   (name, typeToSML manifest type_)
               in
-                  [ typedef "record" [] (record_t
-                      (map fieldType (#fields record)))
-                  , fundef "to_record" ["(ctx,data)"] (record_e
-                      (map getField (#fields record)))
-                  , fundef "from_record"
-                      ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
-                      ("let val out = ref " ^ null ^ " in "
-                       ^
-                       apply "error_check"
-                         [ (fficall (#new record)
-                              ([ ("ctx", "futhark_context")
-                               , ("out", "pointer ref")
-                               ] @ map fieldArg (#fields record)) "int")
-                         , "ctx"
-                         ] ^ ";(ctx,!out) end")
-                  ]
+                [ typedef "record" [] (record_t
+                    (map fieldType (#fields record)))
+                , fundef "to_record" ["(ctx,data)"] (record_e
+                    (map getField (#fields record)))
+                , fundef "from_record"
+                    ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
+                    ("let val out = ref " ^ null ^ " in "
+                     ^
+                     apply "error_check"
+                       [ (fficall (#new record)
+                            ([ ("ctx", "futhark_context")
+                             , ("out", "pointer ref")
+                             ] @ map fieldArg (#fields record)) "int")
+                       , "ctx"
+                       ] ^ ";(ctx,!out) end")
+                ]
               end
       in
         unlines
@@ -365,7 +366,12 @@ val record_signature =
 fun generate sig_name struct_name
   (manifest as MANIFEST {backend, entry_points, types}) =
   let
-    val type_cfg = typedef "cfg" [] "{}"
+    val type_cfg = typedef "cfg" []
+      (record_t
+         [("logging", "bool"), ("debugging", "bool"), ("profiling", "bool")])
+    val def_cfg =
+      record_e
+        [("logging", "false"), ("debugging", "false"), ("profiling", "false")]
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
@@ -387,13 +393,31 @@ fun generate sig_name struct_name
       , type_cfg
       , typedef "futhark_context_config" [] "pointer"
       , typedef "futhark_context" [] "pointer"
-      , "val default_cfg = {}"
+      , "val default_cfg = " ^ def_cfg
       , ""
       , error_check
-      , fundef "ctx_new" ["{}"] (unlines
+      , fundef "ctx_new" ["{logging,debugging,profiling}"] (unlines
           [ "let"
           , "val c_cfg ="
           , fficall "futhark_context_config_new" [] "futhark_context_config"
+          , "val () = "
+            ^
+            fficall "futhark_context_config_set_debugging"
+              [ ("c_cfg", "futhark_context_config")
+              , ("if debugging then 1 else 0", "int")
+              ] "unit"
+          , "val () ="
+            ^
+            fficall "futhark_context_config_set_logging"
+              [ ("c_cfg", "futhark_context_config")
+              , ("if logging then 1 else 0", "int")
+              ] "unit"
+          , "val () = "
+            ^
+            fficall "futhark_context_config_set_profiling"
+              [ ("c_cfg", "futhark_context_config")
+              , ("if profiling then 1 else 0", "int")
+              ] "unit"
           , "val c_ctx ="
           , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
               "futhark_context"
