@@ -1,28 +1,33 @@
-.TH SMLFUT 1
+.Dd 2023
+.Dt 1
+.Sh Name
+.Nm smlfut
+.Nd call Futhark from Standard ML.
 .
-.SH Name
-smlfut - call Futhark from Standard ML.
-.
-.SH Synopsis
+.Sh Synopsis
+.Nm
 .SY smlfut
-.RI [ manifest ]
-.YS
+.Bk
+.Ar manifest
+.Ek
 .
-.SH Description
-Smlfut allows SML programs to invoke Futhark programs via Futhark's C
-API, by generating appropriate wrapper code, which is then compiled as
-normal with an SML compiler.
-
-.SH Usage
-.PP
-First compile Futhark program
+.Sh Description
+.Nm
+allows SML programs to invoke Futhark programs via Futhark's C API, by
+generating appropriate wrapper code, which is then compiled as normal
+with an SML compiler.
+.
+.Sh Usage
+.Pp
+First compile a Futhark program
 .I foo.fut
 with
-.MR futhark 1
+.Xr futhark 1
 using one of the C backends, then pass the generated JSON manifest
 file
 .I foo.json
-to smlfut.
+to
+.Nm .
 .
 This will produce two files
 .I foo.sig
@@ -41,7 +46,7 @@ The generated files must then be compiled with a SML compiler.
 The generated interface directly exposes the C API, so it is low
 level.  The only concession is that the C error codes are turned into
 SML exceptions.
-.PP
+.Pp
 The generated signatures are designed to be human readable and should
 be mostly straightforward.  The general principle is that you construct a
 .I "context"
@@ -50,7 +55,7 @@ state and is passed to entry points and various other functions.
 Different context objects are not interchangeable, despite having the
 same type, and Futhark values obtained via one context may not be
 passed to another.
-.PP
+.Pp
 Futhark's scalar types are mapped directly to the corresponding SML types (e.g.
 .I
 f64
@@ -60,48 +65,48 @@ Arrays and opaque types are mapped to abstract SML types, each
 contained in a structure that defines functions for interacting with
 them.
 .
-.PP
+.Pp
 In contrast to the C API, the functions for copying data to and from
 Futhark are synchronous, and do not need explicit synchronisation.
 However, entry points are still asynchronous, meaning that errors can
 be delayed until a future operation.  Use the 'sync' function if you
 want to ensure all errors have been checked.
 .
-.SS Linking Futhark with MLton
+.Ss Linking Futhark with MLton
 .
 The Futhark compiler produces C code, which must be passed to
-.MR mlton 1
+.Xr mlton 1
 in order to produce an executable.  This can be done simply by passing
 the .c file to
-.MR mlton 1
+.Xr mlton 1
 on the command line, along with the .sml and/or .mlb file.  However,
 if you want to use a GPU backend, you must also pass the appropriate
 linker flags, e.g.
-.EX
-
-mlton foo.mlb foo.c -link-opt '-lcuda -lnvrtc -lcudart'
-
-.EE
+.Pp
+.Li mlton foo.mlb foo.c -link-opt '-lcuda -lnvrtc -lcudart'
+.Pp
 for CUDA.  See the Futhark documentation for the appropriate linker
 flags needed for a given backend.
-.SH Bugs
+.Sh Bugs
 The generated code currently supports only MLton (and perhaps MPL).
-.PP
+.Pp
 The generated code directly exposes the manual memory management
 required by Futhark's C interface.  If you neglect to free the values
 built using constructor functions or entry points, you will leak
 memory.  Freeing the context before freeing all associated values will
 also leak memory.
-.PP
+.Pp
 Be careful not to mix values associated with different contexts.  They
 have the same type, so this is an easy mistake to make.
-.PP
+.Pp
 If the manifest file name is not a valid SML identifier, the generated
 code will contain syntax errors.
 .
-.SH License
-Smlfut
+.Sh License
+.Nm
 itself is released under the GPLv3 or later.  The code
 .I generated
-by smlfut may be used for any purpose, without restrictions or
-requirements, without any need for attribution.
+by
+.Nm
+may be used for any purpose, without restrictions or requirements,
+without any need for attribution.

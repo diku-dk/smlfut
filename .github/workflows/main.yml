@@ -38,7 +38,7 @@ jobs:
 
       - name: Install Debian packages
         run: |
-          groff -Tpdf -m man ./smlfut.1 > smlfut.pdf
+          groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
