@@ -384,6 +384,7 @@ fun generate sig_name struct_name
       , valspec "default_cfg" [] "cfg"
       , valspec "ctx_new" ["cfg"] "ctx"
       , valspec "ctx_free" ["ctx"] "unit"
+      , valspec "ctx_sync" ["ctx"] "unit"
       , ""
       ] @ type_specs @ entry_specs
     val defs =
@@ -432,6 +433,10 @@ fun generate sig_name struct_name
             fficall "futhark_context_config_free"
               [("cfg", "futhark_context_config")] "unit"
           , "in () end"
+          ])
+      , fundef "ctx_sync" ["{cfg,ctx}"] (apply "error_check"
+          [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
+          , "ctx"
           ])
       ] @ type_defs @ entry_defs
   in

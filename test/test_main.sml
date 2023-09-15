@@ -38,6 +38,7 @@ fun test_i32 ctx =
     val arr_in = Futhark.array_1d_i32.new ctx (Int32Array.fromList [1, 2, 3]) 3
     val arr_out = Futhark.entry_array_i32 ctx arr_in
     val arr_sml = Futhark.array_1d_i32.values arr_out
+    val () = Futhark.ctx_sync ctx
     val () = Futhark.array_1d_i32.free arr_in
     val () = Futhark.array_1d_i32.free arr_out
   in
@@ -50,9 +51,11 @@ fun test_i32 ctx =
 
 fun test_f64 ctx =
   let
-    val arr_in = Futhark.array_1d_f64.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
+    val arr_in =
+      Futhark.array_1d_f64.new ctx (Real64Array.fromList [1.0, 2.0, 3.0]) 3
     val arr_out = Futhark.entry_array_f64 ctx arr_in
     val arr_sml = Futhark.array_1d_f64.values arr_out
+    val () = Futhark.ctx_sync ctx
     val expected = Real64Array.fromList [3.0, 4.0, 5.0, 1.0, 2.0, 3.0]
     val () = Futhark.array_1d_f64.free arr_in
     val () = Futhark.array_1d_f64.free arr_out
@@ -66,9 +69,11 @@ fun test_f64 ctx =
 fun test_transpose ctx =
   let
     val arr_in =
-      Futhark.array_2d_i32.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6]) (2, 3)
+      Futhark.array_2d_i32.new ctx (Int32Array.fromList [1, 2, 3, 4, 5, 6])
+        (2, 3)
     val arr_out = Futhark.entry_transpose_i32 ctx arr_in
     val arr_sml = Futhark.array_2d_i32.values arr_out
+    val () = Futhark.ctx_sync ctx
     val () = Futhark.array_2d_i32.free arr_in
     val () = Futhark.array_2d_i32.free arr_out
   in
@@ -79,19 +84,22 @@ fun test_transpose ctx =
   end
 
 fun test_fails ctx =
-  (Futhark.entry_fails ctx 0; raise Fail "Should have failed.")
+  ( Futhark.entry_fails ctx 0
+  ; Futhark.ctx_sync ctx
+  ; raise Fail "Should have failed."
+  )
   handle Futhark.error e =>
     if String.isPrefix "Error: division by zero" e then ()
     else raise Fail ("Got unexpected error: " ^ e)
 
 fun test_record ctx =
-    let val record = Futhark.opaque_record.from_record ctx {a=2,b=true}
-        val {a,b} = Futhark.opaque_record.to_record record
-    in if a <> 2 orelse b <> true then
-           raise Fail "Unexpected result."
-       else ();
-       Futhark.opaque_record.free record
-    end
+  let
+    val record = Futhark.opaque_record.from_record ctx {a = 2, b = true}
+    val {a, b} = Futhark.opaque_record.to_record record
+  in
+    if a <> 2 orelse b <> true then raise Fail "Unexpected result." else ();
+    Futhark.opaque_record.free record
+  end
 
 val () =
   let
