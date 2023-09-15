@@ -1,3 +1,6 @@
+PREFIX ?= /usr/local
+MANPREFIX ?= ${PREFIX}/share/man
+
 MLKIT=mlkit
 FUTHARK=futhark
 FUTHARK_BACKEND=c

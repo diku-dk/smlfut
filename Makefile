@@ -1,6 +1,16 @@
-include config.mk
+include config.mk # Also contains install path.
 
 all: smlfut
+
+install: smlfut smlfut.1
+	@echo \# Installing executable files to ${PREFIX}/bin
+	@mkdir -p ${PREFIX}/bin/
+	install smlfut ${PREFIX}/bin/
+	@echo \# Installing manual page to ${MANPREFIX}/man1
+	@mkdir -p ${MANPREFIX}/man1/
+	@echo \# Installing manpages to ${MANPREFIX}/man1/
+	install -D -m 644 smlfut.1 ${MANPREFIX}/man1/
+
 
 smlfut: src/smlfut.mlb src/*.sml
 	$(MLKIT) -output $@ src/smlfut.mlb
