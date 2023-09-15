@@ -254,9 +254,8 @@ fun generateRecordDefs manifest name {new, fields} =
            ^
            apply "error_check"
              [ (fficall new
-                  ([ ("ctx", "futhark_context")
-                   , ("out", "pointer ref")
-                   ] @ map fieldArg fields) "int")
+                  ([("ctx", "futhark_context"), ("out", "pointer ref")]
+                   @ map fieldArg fields) "int")
              , "ctx"
              ] ^ ";(ctx,!out) end")
       ]
@@ -385,9 +384,10 @@ fun generate sig_name struct_name
           ])
       ] @ type_defs @ entry_defs
   in
-    ( "signature " ^ sig_name ^ " = sig\n" ^ unlines specs ^ "end\n"
-    , "structure " ^ struct_name ^ " :> " ^ sig_name ^ " = struct\n"
-      ^ unlines defs ^ "end\n"
+    ( unlines (["signature " ^ sig_name ^ " = sig"] @ specs @ ["end"])
+    , unlines
+        (["structure " ^ struct_name ^ " :> " ^ sig_name ^ " = struct"] @ defs
+         @ ["end"])
     )
   end
 
