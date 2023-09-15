@@ -2,10 +2,7 @@ include config.mk
 
 all: smlfut
 
-src/lib:
-	cd src && smlpkg sync
-
-smlfut: src/lib src/smlfut.mlb src/*.sml
+smlfut: src/smlfut.mlb src/*.sml
 	$(MLKIT) -output $@ src/smlfut.mlb
 
 test/test.json: test/test.fut
