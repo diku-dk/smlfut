@@ -23,8 +23,7 @@ fun tuplify_e [x] = x
 
 fun tuplify_t [x] = x
   | tuplify_t [] = "unit"
-  | tuplify_t xs =
-      parens (punctuate "*" xs)
+  | tuplify_t xs = punctuate "*" xs
 
 fun apply f args =
     f ^ parens (punctuate ", " args)
