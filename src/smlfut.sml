@@ -84,8 +84,8 @@ fun blankRef manifest t =
       | _ => raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
-  valspec name ("ctx" :: map (typeToSML manifest o #type_) inputs)
-    (tuplify_t (map (typeToSML manifest o #type_) outputs))
+  valspec name ("ctx" :: map (typeToSML manifest o #type_) inputs) (tuplify_t
+    (map (typeToSML manifest o #type_) outputs))
 
 fun mkSum [] = "0"
   | mkSum [x] = x
@@ -187,31 +187,27 @@ fun shapeTypeOfRank d =
   (tuplify_t o replicate d) "int"
 
 fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
-      unlines
-        [ "structure " ^ futharkArrayStruct info ^ " : FUTHARK_ARRAY"
-        , "where type ctx = ctx"
-        , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-        , "  and type native.array = " ^ smlArrayModule info ^ ".array"
-        , "  and type native.elem = " ^ smlArrayModule info ^ ".elem"
-        ]
+      [ structspec (futharkArrayStruct info) "FUTHARK_ARRAY"
+      , "where type ctx = ctx"
+      , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+      , "  and type native.array = " ^ smlArrayModule info ^ ".array"
+      , "  and type native.elem = " ^ smlArrayModule info ^ ".elem"
+      ]
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
       case #record info of
         NONE =>
-          unlines
-            [ "structure " ^ futharkOpaqueStruct name ^ " : FUTHARK_OPAQUE"
-            , "where type ctx = ctx"
-            ]
+          [ structspec (futharkOpaqueStruct name) "FUTHARK_OPAQUE"
+          , "where type ctx = ctx"
+          ]
       | SOME record =>
           let
             fun fieldType (name, {project, type_}) =
               (name, typeToSML manifest type_)
           in
-            unlines
-              [ "structure " ^ futharkOpaqueStruct name ^ " : FUTHARK_RECORD"
-              , "where type ctx = ctx"
-              , "  and type record = "
-                ^ record_t (map fieldType (#fields record))
-              ]
+            [ structspec (futharkOpaqueStruct name) "FUTHARK_RECORD"
+            , "where type ctx = ctx"
+            , "  and type record = " ^ record_t (map fieldType (#fields record))
+            ]
           end
 
 fun generateTypeDef manifest
@@ -226,9 +222,8 @@ fun generateTypeDef manifest
               apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
         val shape_args = map (fn x => (x, "Int64.int")) shape
       in
-        unlines
-          [ "structure " ^ futharkArrayStruct info ^ " = struct"
-          , typedef "array" [] (tuplify_t ["futhark_context", "pointer"])
+        structdef (futharkArrayStruct info) NONE
+          [ typedef "array" [] (tuplify_t ["futhark_context", "pointer"])
           , typedef "ctx" [] "ctx"
           , typedef "shape" [] (shapeTypeOfRank rank)
           , "structure native = " ^ smlArrayModule info
@@ -265,7 +260,6 @@ fun generateTypeDef manifest
                   ] "Int32.int"
               , "in out end"
               ])
-          , "end"
           ]
       end
   | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
@@ -317,29 +311,28 @@ fun generateTypeDef manifest
                 ]
               end
       in
-        unlines
-          ([ "structure " ^ futharkOpaqueStruct name ^ " = struct"
-           , typedef "ctx" [] "ctx"
+        structdef (futharkOpaqueStruct name) NONE
+          ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuplify_t ["futhark_context", "pointer"])
            , fundef "free" ["(ctx,data)"] (apply "error_check"
                [ (fficall (#free (#ops info))
                     ([("ctx", "futhark_context"), ("data", "pointer")]) "int")
                , "ctx"
                ])
-           ] @ more @ ["end"])
+           ] @ more)
       end
 
 val array_signature =
   [ "signature FUTHARK_ARRAY ="
   , "sig"
-  , "type array"
-  , "type ctx"
-  , "type shape"
-  , "structure native : MONO_ARRAY"
-  , "val new: ctx -> native.array -> shape -> array"
-  , "val free: array -> unit"
-  , "val shape: array -> shape"
-  , "val values: array -> native.array"
+  , "  type array"
+  , "  type ctx"
+  , "  type shape"
+  , "  structure native : MONO_ARRAY"
+  , "  val new: ctx -> native.array -> shape -> array"
+  , "  val free: array -> unit"
+  , "  val shape: array -> shape"
+  , "  val values: array -> native.array"
   , "end"
   ]
 
@@ -347,19 +340,19 @@ val array_signature =
 val opaque_signature =
   [ "signature FUTHARK_OPAQUE ="
   , "sig"
-  , "type t"
-  , "type ctx"
-  , "val free : t -> unit"
+  , "  type t"
+  , "  type ctx"
+  , "  val free : t -> unit"
   , "end"
   ]
 
 val record_signature =
   [ "signature FUTHARK_RECORD ="
   , "sig"
-  , "include FUTHARK_OPAQUE"
-  , "type record"
-  , "val to_record : t -> record"
-  , "val from_record : ctx -> record -> t"
+  , "  include FUTHARK_OPAQUE"
+  , "  type record"
+  , "  val to_record : t -> record"
+  , "  val from_record : ctx -> record -> t"
   , "end"
   ]
 
@@ -375,8 +368,10 @@ fun generate sig_name struct_name
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
-    val type_specs = map (generateTypeSpec manifest) types
-    val type_defs = map (generateTypeDef manifest) types
+    val type_specs =
+      (List.concat o intersperse [""] o map (generateTypeSpec manifest)) types
+    val type_defs =
+      (List.concat o intersperse [""] o map (generateTypeDef manifest)) types
     val specs =
       [ typespec "ctx" []
       , exn_fut
@@ -386,7 +381,8 @@ fun generate sig_name struct_name
       , valspec "ctx_free" ["ctx"] "unit"
       , valspec "ctx_sync" ["ctx"] "unit"
       , ""
-      ] @ type_specs @ ["structure Entry : sig"] @ entry_specs @ ["end"]
+      ] @ type_specs @ ["", "structure Entry : sig"] @ map indent entry_specs
+      @ ["end"]
     val defs =
       [ typedef "pointer" [] "MLton.Pointer.t"
       , typedef "ctx" [] "{cfg: pointer, ctx: pointer}"
@@ -442,10 +438,8 @@ fun generate sig_name struct_name
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
-         @ ["", "signature " ^ sig_name ^ " = sig"] @ specs @ ["end"])
-    , unlines
-        (["structure " ^ struct_name ^ " :> " ^ sig_name ^ " = struct"] @ defs
-         @ ["end"])
+         @ [""] @ sigdef sig_name specs)
+    , unlines (structdef struct_name (SOME sig_name) defs)
     )
   end
 

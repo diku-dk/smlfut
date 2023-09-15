@@ -2,6 +2,8 @@ val unlines = concat o map (fn s => s ^ "\n")
 
 fun parens s = "(" ^ s ^ ")"
 fun braces s = "{" ^ s ^ "}"
+fun indent "" = ""
+  | indent s = "  " ^ s
 
 fun intersperse y [] = []
   | intersperse y [x] = [x]
@@ -50,6 +52,12 @@ fun typedef tname args def =
 
 fun datatypedef tname args def =
     "datatype " ^ tapply tname args ^ " = " ^ def
+
+fun sigexp specs = ["sig"] @ map indent specs @ ["end"]
+fun sigdef name specs = ["signature " ^ name ^ " = sig"] @ map indent specs @ ["end"]
+fun structspec name sige = "structure " ^ name ^ " : " ^ sige
+fun structdef name (SOME t) specs = ["structure " ^ name ^ ":>" ^ t ^ " = struct"] @ map indent specs @ ["end"]
+  | structdef name NONE specs = ["structure " ^ name ^ " = struct"] @ map indent specs @ ["end"]
 
 fun writeFile fname s =
   let val os = TextIO.openOut fname
