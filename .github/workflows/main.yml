@@ -34,11 +34,11 @@ jobs:
       - name: Install Debian packages
         run: |
           sudo apt-get -qq update
-          sudo apt-get install -y mandoc
+          sudo apt-get install -y groff
 
       - name: Install Debian packages
         run: |
-          mandoc -T html ./smlfut.1 > smlfut.html
+          groff -Tpdf -m man ./smlfut.1 > smlfut.pdf
 
       - uses: "marvinpinto/action-automatic-releases@latest"
         with:
@@ -47,4 +47,4 @@ jobs:
           prerelease: true
           title: "Manpage"
           files: |
-            smlfut.html
+            smlfut.pdf
