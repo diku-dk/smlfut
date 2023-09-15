@@ -56,11 +56,10 @@ Different context objects are not interchangeable, despite having the
 same type, and Futhark values obtained via one context may not be
 passed to another.
 .Pp
-Futhark's scalar types are mapped directly to the corresponding SML types (e.g.
-.I
-f64
+Futhark's scalar types are mapped directly to the corresponding SML types, e.g.
+.Em f64
 to
-.IR Real64 ).
+.Em Real64.
 Arrays and opaque types are mapped to abstract SML types, each
 contained in a structure that defines functions for interacting with
 them.
