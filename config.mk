@@ -6,6 +6,8 @@ FUTHARK=futhark
 FUTHARK_BACKEND=c
 MLTON=mlton
 
+MLCOMP ?= $(MLKIT)
+
 MLTONFLAGS = \
   -default-ann 'allowFFI true'
 

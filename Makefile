@@ -13,7 +13,7 @@ install: smlfut smlfut.1
 
 
 smlfut: src/smlfut.mlb src/*.sml
-	$(MLKIT) -output $@ src/smlfut.mlb
+	$(MLCOMP) -output $@ src/smlfut.mlb
 
 test/test.json: test/test.fut
 	$(FUTHARK) $(FUTHARK_BACKEND) --library $<

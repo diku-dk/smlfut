@@ -454,10 +454,10 @@ fun main () =
   case CommandLine.arguments () of
     [json_file] =>
       let
-        val base = Path.base json_file
+        val base = OS.Path.base json_file
         val m = manifestFromFile json_file
         val (sig_name, struct_name) =
-          (String.map Char.toUpper (Path.file base), (Path.file base))
+          (String.map Char.toUpper (OS.Path.file base), (OS.Path.file base))
         val (sig_s, struct_s) = generate sig_name struct_name m
       in
         writeFile (base ^ ".sig") sig_s;
@@ -465,7 +465,7 @@ fun main () =
       end
   | _ =>
       ( TextIO.output (TextIO.stdErr, "Need a Futhark manifest file.\n")
-      ; Process.exit Process.failure
+      ; OS.Process.exit OS.Process.failure
       )
 
 val () = main ()

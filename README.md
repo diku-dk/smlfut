@@ -8,9 +8,9 @@ manual](https://github.com/diku-dk/smlfut/releases/download/latest/smlfut.pdf).
 
 ## Installation
 
-`smlfut` is written in SML.  The Makefile currently assumes
-[MLkit](https://github.com/melsman/mlkit), but it is probably easy to
-support other SML compilers.  Run
+`smlfut` is written in SML.  By default the Makefile uses
+[MLkit](https://github.com/melsman/mlkit), but `smlfut` can also be
+compiled with [MLton](https://mlton.org).  Run
 
     make
 
@@ -18,7 +18,8 @@ to compile, or
 
     make install
 
-to install.  By default, this installs in `/usr/local`.  Pass a
+to install.  Pass `MLCOMP=mlton` (or modify `config.mk`) to compile
+with MLton.  By default the Makefile installs in `/usr/local`.  Pass a
 different `PREFIX` to install elsewhere, e.g.:
 
     make install DESTDIR=$HOME/.local
