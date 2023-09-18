@@ -56,7 +56,7 @@ fun smlArrayModule (info: array_info) =
 fun smlArrayType info = smlArrayModule info ^ ".array"
 
 fun futharkArrayStruct (info: array_info) =
-    smlArrayModule info ^ Int.toString (#rank info)
+  smlArrayModule info ^ Int.toString (#rank info)
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
@@ -105,24 +105,24 @@ fun mkProd [] = "1"
   | mkProd (x :: xs) = x ^ "*" ^ mkProd xs
 
 fun mkSize (info: array_info) v =
-  "let val shape_c = "
-  ^
-  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-    pointer ^ " in "
-  ^
-  mkProd (List.tabulate (#rank info, fn i =>
-    apply "Int64.toInt"
-      [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
+  letbind
+    [( "shape_c"
+     , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+         pointer
+     )]
+    [(mkProd (List.tabulate (#rank info, fn i =>
+        apply "Int64.toInt"
+          [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])))]
 
 fun mkShape (info: array_info) v =
-  "let val shape_c = "
-  ^
-  fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-    pointer ^ " in "
-  ^
-  tuplify_e (List.tabulate (#rank info, fn i =>
-    apply "Int64.toInt"
-      [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])) ^ " end"
+  letbind
+    [( "shape_c"
+     , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+         pointer
+     )]
+    [tuplify_e (List.tabulate (#rank info, fn i =>
+       apply "Int64.toInt"
+         [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
 
 (* Extracting the Futhark error string is somewhat tricky, for two reasons:
 
@@ -133,7 +133,7 @@ fun mkShape (info: array_info) v =
 Our solution is to allocate an SML string, copy the C string into it,
 then free the C string.
  *)
-val error_check: string = fundef "error_check" ["(err,ctx)"] (unlines
+val error_check = fundef "error_check" ["(err,ctx)"]
   [ "if err = 0 then () else"
   , "let val p = "
     ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
@@ -144,7 +144,7 @@ val error_check: string = fundef "error_check" ["(err,ctx)"] (unlines
   , fficall "free" [("p", pointer)] "unit" ^ ";"
   , "raise error s"
   , "end"
-  ])
+  ]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -161,10 +161,10 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
                SOME _ => "(_, " ^ v ^ ")"
              | _ => v) :: inpParams (i + 1) rest
           end
-    fun outDecs i [] = ""
+    fun outDecs i [] = []
       | outDecs i ({type_, unique = _} :: rest) =
-          "val out" ^ Int.toString i ^ " = ref (" ^ blankRef manifest type_
-          ^ ")" ^ "\n" ^ outDecs (i + 1) rest
+          ("out" ^ Int.toString i, "ref (" ^ blankRef manifest type_ ^ ")")
+          :: outDecs (i + 1) rest
     fun outArgs i [] = []
       | outArgs i (out :: rest) =
           ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref")
@@ -183,12 +183,16 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           end
   in
     fundef name (["{cfg,ctx}"] @ (inpParams 0 inputs))
-      ("let\n" ^ outDecs 0 outputs ^ "val ret = "
-       ^
-       fficall cfun
-         ([("ctx", "futhark_context")] @ outArgs 0 outputs @ inpArgs 0 inputs)
-         "Int32.int" ^ "\nin error_check(ret,ctx); "
-       ^ tuplify_e (outRes 0 outputs) ^ " end")
+      (letbind
+         (outDecs 0 outputs
+          @
+          [ ( "ret"
+            , fficall cfun
+                ([("ctx", "futhark_context")] @ outArgs 0 outputs
+                 @ inpArgs 0 inputs) "Int32.int"
+            )
+          , ("()", "error_check(ret,ctx)")
+          ]) [tuplify_e (outRes 0 outputs)])
   end
 
 fun shapeTypeOfRank d =
@@ -231,44 +235,46 @@ fun generateTypeDef manifest
         val shape_args = map (fn x => (x, "Int64.int")) shape
       in
         structdef (futharkArrayStruct info) NONE
-          [ typedef "array" [] (tuplify_t ["futhark_context", pointer])
-          , typedef "ctx" [] "ctx"
-          , typedef "shape" [] (shapeTypeOfRank rank)
-          , "structure native = " ^ smlArrayModule info
-          , fundef "new"
-              [ "{ctx,cfg}"
-              , parens ("data: " ^ data_t)
-              , parens ("shape: " ^ shapeTypeOfRank rank)
-              ]
-              (tuplify_e
-                 [ "ctx"
-                 , fficall (#new ops)
-                     ([("ctx", "futhark_context"), ("data", data_t)]
-                      @ shape_args) pointer
-                 ])
-          , fundef "free" ["(ctx,data)"] (apply "error_check"
-              [ (fficall (#free ops)
-                   ([("ctx", "futhark_context"), ("data", pointer)]) "int")
-              , "ctx"
-              ])
-          , fundef "shape" ["(ctx,data)"] (mkShape info "data")
-          , fundef "values" ["(ctx, data)"] (unlines
-              [ "let"
-              , "val n = " ^ mkSize info "data"
-              , "val out = "
-                ^
-                apply (smlArrayModule info ^ ".array")
-                  ["n", blankRef manifest elemtype]
-              , "val err = "
-                ^
-                fficall (#values ops)
-                  [ ("ctx", "futhark_context")
-                  , ("data", pointer)
-                  , ("out", data_t)
-                  ] "Int32.int"
-              , "in out end"
-              ])
-          ]
+          ([ typedef "array" [] (tuplify_t ["futhark_context", pointer])
+           , typedef "ctx" [] "ctx"
+           , typedef "shape" [] (shapeTypeOfRank rank)
+           , "structure native = " ^ smlArrayModule info
+           ]
+           @
+           fundef "new"
+             [ "{ctx,cfg}"
+             , parens ("data: " ^ data_t)
+             , parens ("shape: " ^ shapeTypeOfRank rank)
+             ]
+             [tuplify_e
+                [ "ctx"
+                , fficall (#new ops)
+                    ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
+                    pointer
+                ]]
+           @
+           fundef "free" ["(ctx,data)"]
+             [apply "error_check"
+                [ (fficall (#free ops)
+                     ([("ctx", "futhark_context"), ("data", pointer)]) "int")
+                , "ctx"
+                ]] @ fundef "shape" ["(ctx,data)"] (mkShape info "data")
+           @
+           fundef "values" ["(ctx, data)"]
+             (letbind
+                [ ("n", unlines (mkSize info "data"))
+                , ( "out"
+                  , apply (smlArrayModule info ^ ".array")
+                      ["n", blankRef manifest elemtype]
+                  )
+                , ( "err"
+                  , fficall (#values ops)
+                      [ ("ctx", "futhark_context")
+                      , ("data", pointer)
+                      , ("out", data_t)
+                      ] "Int32.int"
+                  )
+                ] ["out"]))
       end
   | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
       let
@@ -301,33 +307,35 @@ fun generateTypeDef manifest
                 fun fieldType (name, {project, type_}) =
                   (name, typeToSML manifest type_)
               in
-                [ typedef "record" [] (record_t
-                    (map fieldType (#fields record)))
-                , fundef "to_record" ["(ctx,data)"] (record_e
-                    (map getField (#fields record)))
-                , fundef "from_record"
-                    ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
-                    ("let val out = ref " ^ null ^ " in "
-                     ^
-                     apply "error_check"
-                       [ (fficall (#new record)
-                            ([ ("ctx", "futhark_context")
-                             , ("out", pointer ^ " ref")
-                             ] @ map fieldArg (#fields record)) "int")
-                       , "ctx"
-                       ] ^ ";(ctx,!out) end")
-                ]
+                [typedef "record" [] (record_t (map fieldType (#fields record)))]
+                @
+                fundef "to_record" ["(ctx,data)"]
+                  [record_e (map getField (#fields record))]
+                @
+                fundef "from_record"
+                  ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
+                  ["let val out = ref " ^ null ^ " in "
+                   ^
+                   apply "error_check"
+                     [ (fficall (#new record)
+                          ([ ("ctx", "futhark_context")
+                           , ("out", pointer ^ " ref")
+                           ] @ map fieldArg (#fields record)) "int")
+                     , "ctx"
+                     ] ^ ";(ctx,!out) end"]
               end
       in
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuplify_t ["futhark_context", pointer])
-           , fundef "free" ["(ctx,data)"] (apply "error_check"
-               [ (fficall (#free (#ops info))
-                    ([("ctx", "futhark_context"), ("data", pointer)]) "int")
-               , "ctx"
-               ])
-           ] @ more)
+           ]
+           @
+           fundef "free" ["(ctx,data)"]
+             [apply "error_check"
+                [ (fficall (#free (#ops info))
+                     ([("ctx", "futhark_context"), ("data", pointer)]) "int")
+                , "ctx"
+                ]] @ more)
       end
 
 val array_signature =
@@ -398,50 +406,53 @@ fun generate sig_name struct_name
       , typedef "futhark_context_config" [] pointer
       , typedef "futhark_context" [] pointer
       , "val default_cfg = " ^ def_cfg
-      , ""
-      , error_check
-      , fundef "ctx_new" ["{logging,debugging,profiling}"] (unlines
-          [ "let"
-          , "val c_cfg ="
-          , fficall "futhark_context_config_new" [] "futhark_context_config"
-          , "val () = "
-            ^
-            fficall "futhark_context_config_set_debugging"
-              [ ("c_cfg", "futhark_context_config")
-              , ("if debugging then 1 else 0", "int")
-              ] "unit"
-          , "val () ="
-            ^
-            fficall "futhark_context_config_set_logging"
-              [ ("c_cfg", "futhark_context_config")
-              , ("if logging then 1 else 0", "int")
-              ] "unit"
-          , "val () = "
-            ^
-            fficall "futhark_context_config_set_profiling"
-              [ ("c_cfg", "futhark_context_config")
-              , ("if profiling then 1 else 0", "int")
-              ] "unit"
-          , "val c_ctx ="
-          , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
-              "futhark_context"
-          , "in {cfg=c_cfg, ctx=c_ctx} end"
-          ])
-      , fundef "ctx_free" ["{cfg,ctx}"] (unlines
-          [ "let"
-          , "val () = "
-            ^ fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
-          , "val () = "
-            ^
-            fficall "futhark_context_config_free"
-              [("cfg", "futhark_context_config")] "unit"
-          , "in () end"
-          ])
-      , fundef "ctx_sync" ["{cfg,ctx}"] (apply "error_check"
-          [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
-          , "ctx"
-          ])
-      ] @ type_defs @ ["structure Entry = struct"] @ entry_defs @ ["end"]
+      ] @ error_check
+      @
+      fundef "ctx_new" ["{logging,debugging,profiling}"]
+        [ "let"
+        , "val c_cfg ="
+        , fficall "futhark_context_config_new" [] "futhark_context_config"
+        , "val () = "
+          ^
+          fficall "futhark_context_config_set_debugging"
+            [ ("c_cfg", "futhark_context_config")
+            , ("if debugging then 1 else 0", "int")
+            ] "unit"
+        , "val () ="
+          ^
+          fficall "futhark_context_config_set_logging"
+            [ ("c_cfg", "futhark_context_config")
+            , ("if logging then 1 else 0", "int")
+            ] "unit"
+        , "val () = "
+          ^
+          fficall "futhark_context_config_set_profiling"
+            [ ("c_cfg", "futhark_context_config")
+            , ("if profiling then 1 else 0", "int")
+            ] "unit"
+        , "val c_ctx ="
+        , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
+            "futhark_context"
+        , "in {cfg=c_cfg, ctx=c_ctx} end"
+        ]
+      @
+      fundef "ctx_free" ["{cfg,ctx}"]
+        [ "let"
+        , "val () = "
+          ^ fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
+        , "val () = "
+          ^
+          fficall "futhark_context_config_free"
+            [("cfg", "futhark_context_config")] "unit"
+        , "in () end"
+        ]
+      @
+      fundef "ctx_sync" ["{cfg,ctx}"]
+        [apply "error_check"
+           [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
+           , "ctx"
+           ]] @ type_defs @ ["structure Entry = struct"]
+      @ List.concat entry_defs @ ["end"]
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
