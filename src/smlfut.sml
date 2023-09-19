@@ -133,18 +133,40 @@ fun mkShape (info: array_info) v =
 Our solution is to allocate an SML string, copy the C string into it,
 then free the C string.
  *)
-val error_check = fundef "error_check" ["(err,ctx)"]
+
+val strlen =
+  ["fun strlen (p: MLton.Pointer.t) ="]
+  @
+  map indent
+  [ "let"
+  , indent "fun loop i ="
+  , indent (indent ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
+  , "in"
+  , indent "loop 0"
+  , "end"
+  ]
+
+val strcpy =
+  [ "fun strcpy (p: MLton.Pointer.t) : string ="
+  , indent "CharVector.tabulate (strlen p, fn i =>"
+  , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
+  ]
+
+val error_check =
+  ["local"] @ map indent strlen @ map indent strcpy @ ["in"]
+  @
+  fundef "error_check" ["(err,ctx)"]
   [ "if err = 0 then () else"
   , "let val p = "
     ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
-  , "val n = " ^ fficall "strlen" [("p", pointer)] "Word64.word"
-  , "val s = " ^ apply "CharVector.tabulate" ["Word64.toInt n", "fn _ => #\" \""]
+  , "val s = strcpy p"
   , "in"
-  , fficall "strcpy" [("s", "string"), ("p", pointer)] pointer ^ ";"
   , fficall "free" [("p", pointer)] "unit" ^ ";"
   , "raise error s"
   , "end"
   ]
+  @
+  ["end"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
