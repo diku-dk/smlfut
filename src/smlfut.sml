@@ -140,7 +140,7 @@ val error_check = fundef "error_check" ["(err,ctx)"]
   , "val n = " ^ fficall "strlen" [("p", pointer)] "Int64.int"
   , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
   , "in"
-  , fficall "strcpy" [("s", "string"), ("p", pointer)] "unit" ^ ";"
+  , fficall "strcpy" [("s", "string"), ("p", pointer)] pointer ^ ";"
   , fficall "free" [("p", pointer)] "unit" ^ ";"
   , "raise error s"
   , "end"
