@@ -137,8 +137,8 @@ val error_check = fundef "error_check" ["(err,ctx)"]
   [ "if err = 0 then () else"
   , "let val p = "
     ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
-  , "val n = " ^ fficall "strlen" [("p", pointer)] "Int64.int"
-  , "val s = " ^ apply "CharVector.tabulate" ["Int64.toInt n", "fn _ => #\" \""]
+  , "val n = " ^ fficall "strlen" [("p", pointer)] "Word64.word"
+  , "val s = " ^ apply "CharVector.tabulate" ["Word64.toInt n", "fn _ => #\" \""]
   , "in"
   , fficall "strcpy" [("s", "string"), ("p", pointer)] pointer ^ ";"
   , fficall "free" [("p", pointer)] "unit" ^ ";"
