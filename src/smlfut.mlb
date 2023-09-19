@@ -1,5 +1,6 @@
 local $(SML_LIB)/basis/basis.mlb
       lib/github.com/diku-dk/sml-json/json.mlb
+      lib/github.com/diku-dk/sml-getopt/getopt.mlb
 in
       util.sml
       manifest.sml

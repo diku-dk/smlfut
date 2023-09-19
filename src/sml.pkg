@@ -1,3 +1,4 @@
 require {
   github.com/diku-dk/sml-json 0.1.0 #6b1772bc3e1902f0d3e5be4361788d472b285600
+  github.com/diku-dk/sml-getopt 0.0.0-20230919130911+f6fa21bf090ae44e9a1ab4d3e11b30c555479d4f
 }

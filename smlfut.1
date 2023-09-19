@@ -7,15 +7,35 @@
 .Sh Synopsis
 .Nm
 .SY smlfut
+.Op Ar options
 .Bk
-.Ar manifest
+.Ar MANIFEST.json
 .Ek
 .
 .Sh Description
 .Nm
 allows SML programs to invoke Futhark programs via Futhark's C API, by
 generating appropriate wrapper code, which is then compiled as normal
-with an SML compiler.
+with an SML compiler.  Given a manifest file in JSON format,
+.Nm
+produces two output files, containing signature and structure
+definitions respectively, in the same directory as the manifest file.
+.
+.Sh Options
+.
+.Bl -tag
+.
+.It Fl --output-directory Ns = Ns Ar NAME
+Write output files to this directory.
+.
+.It Fl --signature-name Ns = Ns NAME
+Use this name for the SML signature.  Defaults to the uppercased
+basename of the manifest file.
+.
+.It Fl --structure-name Ns = Ns NAME
+Use this name for the SML structure.  Defaults to the basename of the
+manifest file.
+.El
 .
 .Sh Usage
 .Pp

@@ -461,22 +461,63 @@ fun generate sig_name struct_name
     )
   end
 
+val signature_opt: string option ref = ref NONE
+val structure_opt: string option ref = ref NONE
+val output_opt: string option ref = ref NONE
+
+fun options () : unit GetOpt.opt_descr list =
+  [ { short = [#"h"]
+    , long = ["help"]
+    , arg = GetOpt.NO_ARG (fn () =>
+        (print (usage ()); OS.Process.exit OS.Process.success))
+    , desc = "Show help text."
+    }
+  , { short = []
+    , long = ["signature-name"]
+    , arg = GetOpt.REQ_ARG (fn s => signature_opt := SOME s, "NAME")
+    , desc = "Use this signature name."
+    }
+  , { short = []
+    , long = ["structure-name"]
+    , arg = GetOpt.REQ_ARG (fn s => structure_opt := SOME s, "NAME")
+    , desc = "USe this structure name."
+    }
+  , { short = [#"o"]
+    , long = ["output-directory"]
+    , arg = GetOpt.REQ_ARG (fn s => output_opt := SOME s, "DIR")
+    , desc = "Put files here."
+    }
+  ]
+and usage () =
+  "Usage: smlfut [OPTIONS] MANIFEST.json\n" ^ GetOpt.usage (options ())
+
+fun err s = TextIO.output (TextIO.stdErr, s)
+
 fun main () =
-  case CommandLine.arguments () of
-    [json_file] =>
+  case GetOpt.getopt GetOpt.PERMUTE (options ()) (CommandLine.arguments ()) of
+    (_, [json_file], []) =>
       let
         val base = OS.Path.base json_file
+        val basefile = OS.Path.file base
         val m = manifestFromFile json_file
-        val (sig_name, struct_name) =
-          (String.map Char.toUpper (OS.Path.file base), (OS.Path.file base))
+        val output_dir =
+            case !output_opt of
+                NONE => OS.Path.dir json_file
+              | SOME s => s
+        val sig_name =
+          case !signature_opt of
+            NONE => String.map Char.toUpper basefile
+          | SOME s => s
+        val struct_name =
+          case !structure_opt of
+            NONE => basefile
+          | SOME s => s
         val (sig_s, struct_s) = generate sig_name struct_name m
       in
-        writeFile (base ^ ".sig") sig_s;
-        writeFile (base ^ ".sml") struct_s
+        writeFile (output_dir ^ "/" ^ basefile ^ ".sig") sig_s;
+        writeFile (output_dir ^ "/" ^ basefile ^ ".sml") struct_s
       end
-  | _ =>
-      ( TextIO.output (TextIO.stdErr, "Need a Futhark manifest file.\n")
-      ; OS.Process.exit OS.Process.failure
-      )
+  | (_, _, errors) =>
+      (List.app err errors; err (usage ()); OS.Process.exit OS.Process.failure)
 
 val () = main ()
