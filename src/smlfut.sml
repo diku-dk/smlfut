@@ -191,7 +191,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
                 ([("ctx", "futhark_context")] @ outArgs 0 outputs
                  @ inpArgs 0 inputs) "Int32.int"
             )
-          , ("()", "error_check(ret,ctx)")
+          , ("()", "error_check(Int32.toInt ret, ctx)")
           ]) [tuplify_e (outRes 0 outputs)])
   end
 
