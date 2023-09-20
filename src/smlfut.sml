@@ -16,13 +16,9 @@ val null = "MLton.Pointer.null"
 
 (* Actual logic. *)
 
-fun isValidName s =
-  let
-    fun ok c =
-      Char.isAlphaNum c orelse c = #"'" orelse c = #"_"
-  in
-    List.all ok (explode s)
-  end
+fun constituent c = Char.isAlphaNum c orelse c = #"'" orelse c = #"_"
+
+fun isValidName s = List.all constituent (explode s)
 
 fun checkValidName s =
   if isValidName s then ()
@@ -72,7 +68,9 @@ fun futharkArrayStruct (info: array_info) =
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
-fun futharkOpaqueStruct name = "opaque_" ^ name
+fun futharkOpaqueStruct name =
+    let fun escape c = if constituent c then c else #"_"
+    in  "opaque_" ^ String.map escape name end
 
 fun futharkOpaqueType name = futharkOpaqueStruct name ^ ".t"
 
@@ -232,7 +230,10 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
 fun shapeTypeOfRank d =
   (tuplify_t o replicate d) "int"
 
+fun origNameComment name = ["(* " ^ name ^ " *)"]
+
 fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
+    origNameComment name @
       [ structspec (futharkArrayStruct info) "FUTHARK_ARRAY"
       , "where type ctx = ctx"
       , "  and type shape = " ^ shapeTypeOfRank (#rank info)
@@ -242,6 +243,7 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
       case #record info of
         NONE =>
+        origNameComment name @
           [ structspec (futharkOpaqueStruct name) "FUTHARK_OPAQUE"
           , "where type ctx = ctx"
           ]
@@ -250,6 +252,7 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
             fun fieldType (name, {project, type_}) =
               (name, typeToSML manifest type_)
           in
+          origNameComment name @
             [ structspec (futharkOpaqueStruct name) "FUTHARK_RECORD"
             , "where type ctx = ctx"
             , "  and type record = " ^ record_t (map fieldType (#fields record))
@@ -362,7 +365,6 @@ fun generateTypeDef manifest
                                  "(ctx,!out)"])
               end
       in
-        checkValidName name;
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuplify_t ["futhark_context", pointer])
