@@ -342,10 +342,10 @@ fun generateTypeDef manifest
               in
                 [typedef "record" [] (record_t (map fieldType (#fields record)))]
                 @
-                fundef "to_record" ["(ctx,data)"]
+                fundef "values" ["(ctx,data)"]
                   [record_e (map getField (#fields record))]
                 @
-                fundef "from_record"
+                fundef "new"
                   ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
                   ["let val out = ref " ^ null ^ " in "
                    ^
@@ -401,8 +401,8 @@ val record_signature =
   , "sig"
   , "  include FUTHARK_OPAQUE"
   , "  type record"
-  , "  val to_record : t -> record"
-  , "  val from_record : ctx -> record -> t"
+  , "  val values : t -> record"
+  , "  val new : ctx -> record -> t"
   , "end"
   ]
 
