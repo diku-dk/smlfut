@@ -79,6 +79,11 @@ fun futharkOpaqueType name = futharkOpaqueStruct name ^ ".t"
 fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
   | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueType name
 
+fun apiType t =
+  case isPrimType t of
+    SOME t' => t'
+  | NONE => pointer
+
 fun typeToSML manifest t =
   case lookupType manifest t of
     SOME t' => futharkTypeToSML t t'
@@ -181,10 +186,6 @@ val error_check =
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
-    fun apiType t =
-      case isPrimType t of
-        SOME t' => t'
-      | NONE => pointer
     fun inpParams i [] = []
       | inpParams i ({name = _, type_, unique = _} :: rest) =
           let
@@ -324,7 +325,7 @@ fun generateTypeDef manifest
                     apply "error_check"
                       [ fficall project
                           [ ("ctx", "futhark_context")
-                          , ("out", typeToSML manifest type_ ^ " ref")
+                          , ("out", apiType type_ ^ " ref")
                           , ("data", pointer)
                           ] "int"
                       , "ctx"
@@ -334,9 +335,12 @@ fun generateTypeDef manifest
                        SOME _ => tuplify_e ["ctx", "!out"]
                      | _ => "!out") ^ " end"
                   )
-                fun fieldParam (name, _) = (name, name)
+                fun fieldParam (name, {project, type_}) =
+                    (name, case isPrimType type_ of
+                               SOME _ => name
+                             | NONE => tuplify_e ["_", name])
                 fun fieldArg (name, {project, type_}) =
-                  (name, typeToSML manifest type_)
+                  (name, apiType type_)
                 fun fieldType (name, {project, type_}) =
                   (name, typeToSML manifest type_)
               in
@@ -346,16 +350,16 @@ fun generateTypeDef manifest
                   [record_e (map getField (#fields record))]
                 @
                 fundef "new"
-                  ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
-                  ["let val out = ref " ^ null ^ " in "
-                   ^
-                   apply "error_check"
-                     [ (fficall (#new record)
-                          ([ ("ctx", "futhark_context")
-                           , ("out", pointer ^ " ref")
-                           ] @ map fieldArg (#fields record)) "int")
-                     , "ctx"
-                     ] ^ ";(ctx,!out) end"]
+                       ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
+                       (letbind [("out", "ref " ^ null)]
+                                [apply "error_check"
+                                       [ (fficall (#new record)
+                                                  ([ ("ctx", "futhark_context")
+                                                   , ("out", pointer ^ " ref")
+                                                   ] @ map fieldArg (#fields record)) "int")
+                                       , "ctx"
+                                       ] ^ ";",
+                                 "(ctx,!out)"])
               end
       in
         checkValidName (futharkOpaqueStruct name);
