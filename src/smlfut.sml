@@ -16,6 +16,18 @@ val null = "MLton.Pointer.null"
 
 (* Actual logic. *)
 
+fun isValidName s =
+  let
+    fun ok c =
+      Char.isAlphaNum c orelse c = #"'" orelse c = #"_"
+  in
+    List.all ok (explode s)
+  end
+
+fun checkValidName s =
+  if isValidName s then ()
+  else raise Fail ("\"" ^ s ^ "\" is an invalid SML identifier.")
+
 fun isPrimType "i8" = SOME "Int8.int"
   | isPrimType "i16" = SOME "Int16.int"
   | isPrimType "i32" = SOME "Int32.int"
@@ -138,13 +150,14 @@ val strlen =
   ["fun strlen (p: MLton.Pointer.t) ="]
   @
   map indent
-  [ "let"
-  , indent "fun loop i ="
-  , indent (indent ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
-  , "in"
-  , indent "loop 0"
-  , "end"
-  ]
+    [ "let"
+    , indent "fun loop i ="
+    , indent (indent
+        ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
+    , "in"
+    , indent "loop 0"
+    , "end"
+    ]
 
 val strcpy =
   [ "fun strcpy (p: MLton.Pointer.t) : string ="
@@ -156,17 +169,15 @@ val error_check =
   ["local"] @ map indent strlen @ map indent strcpy @ ["in"]
   @
   fundef "error_check" ["(err,ctx)"]
-  [ "if err = 0 then () else"
-  , "let val p = "
-    ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
-  , "val s = strcpy p"
-  , "in"
-  , fficall "free" [("p", pointer)] "unit" ^ ";"
-  , "raise error s"
-  , "end"
-  ]
-  @
-  ["end"]
+    [ "if err = 0 then () else"
+    , "let val p = "
+      ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
+    , "val s = strcpy p"
+    , "in"
+    , fficall "free" [("p", pointer)] "unit" ^ ";"
+    , "raise error s"
+    , "end"
+    ] @ ["end"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -347,6 +358,7 @@ fun generateTypeDef manifest
                      ] ^ ";(ctx,!out) end"]
               end
       in
+        checkValidName (futharkOpaqueStruct name);
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuplify_t ["futhark_context", pointer])
@@ -523,9 +535,9 @@ fun main () =
         val basefile = OS.Path.file base
         val m = manifestFromFile json_file
         val output_dir =
-            case !output_opt of
-                NONE => OS.Path.dir json_file
-              | SOME s => s
+          case !output_opt of
+            NONE => OS.Path.dir json_file
+          | SOME s => s
         val sig_name =
           case !signature_opt of
             NONE => String.map Char.toUpper basefile
