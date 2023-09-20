@@ -362,7 +362,7 @@ fun generateTypeDef manifest
                                  "(ctx,!out)"])
               end
       in
-        checkValidName (futharkOpaqueStruct name);
+        checkValidName name;
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuplify_t ["futhark_context", pointer])
