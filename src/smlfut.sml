@@ -410,6 +410,27 @@ val record_signature =
   , "end"
   ]
 
+(* The manifest does not guarantee anything about the type ordering,
+but some types (specifically records) may refer to other types.  It is
+important that they are declared before they are used.  Fortunately
+there is at least no possibility of cycles. *)
+fun orderTypes types =
+  let
+    fun order _ [] = []
+      | order known rs =
+        let fun isKnown v =
+                case isPrimType v of
+                    SOME _ => true
+                  | NONE => isSome (List.find (fn x => x = v) known)
+            fun usesKnown (name, FUTHARK_OPAQUE {ctype, ops, record=SOME record}) =
+                List.all (isKnown o #type_ o #2) (#fields record)
+              | usesKnown _ = true
+            val (ok, next) = List.partition usesKnown rs
+        in ok @ order (map #1 ok) next end
+  in
+    order [] types
+  end
+
 fun generate sig_name struct_name
   (manifest as MANIFEST {backend, entry_points, types}) =
   let
@@ -422,6 +443,7 @@ fun generate sig_name struct_name
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = map (generateEntryDef manifest) entry_points
+    val types = orderTypes types
     val type_specs =
       (List.concat o intersperse [""] o map (generateTypeSpec manifest)) types
     val type_defs =

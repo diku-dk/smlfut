@@ -15,3 +15,6 @@ entry mk_record (a: i32) (b: bool) : record = {a,b}
 type sum_opaque = #foo i32
 
 entry mk_sum_opaque x : sum_opaque = #foo x
+
+type record_with_opaque = {f: sum_opaque}
+entry record_with_opaque x : record_with_opaque = {f = mk_sum_opaque x}
