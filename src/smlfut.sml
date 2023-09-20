@@ -574,6 +574,8 @@ fun main () =
           | SOME s => s
         val (sig_s, struct_s) = generate sig_name struct_name m
       in
+        checkValidName sig_name;
+        checkValidName struct_name;
         writeFile (output_dir ^ "/" ^ basefile ^ ".sig") sig_s;
         writeFile (output_dir ^ "/" ^ basefile ^ ".sml") struct_s
       end
