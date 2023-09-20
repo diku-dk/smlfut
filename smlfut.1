@@ -79,10 +79,13 @@ passed to another.
 Futhark's scalar types are mapped directly to the corresponding SML types, e.g.
 .Em f64
 to
-.Em Real64.
+.Em Real64 .
 Arrays and opaque types are mapped to abstract SML types, each
 contained in a structure that defines functions for interacting with
-them.
+them.  Futhark types that are records have functions exposed for
+copying between them and SML records.  Note that if you convert a
+Futhark record into an SML record, you must still also free the
+original Futhark record at some point.
 .
 .Pp
 In contrast to the C API, the functions for copying data to and from
