@@ -247,8 +247,8 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
       [ structspec (futharkArrayStruct info) "FUTHARK_ARRAY"
       , "where type ctx = ctx"
       , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-      , "  and type native.array = " ^ smlArrayModule info ^ ".array"
-      , "  and type native.elem = " ^ smlArrayModule info ^ ".elem"
+      , "  and type Native.array = " ^ smlArrayModule info ^ ".array"
+      , "  and type Native.elem = " ^ smlArrayModule info ^ ".elem"
       ]
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
       case #record info of
@@ -287,7 +287,7 @@ fun generateTypeDef manifest
           ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
            , typedef "ctx" [] "ctx"
            , typedef "shape" [] (shapeTypeOfRank rank)
-           , "structure native = " ^ smlArrayModule info
+           , "structure Native = " ^ smlArrayModule info
            ]
            @
            fundef "new"
@@ -406,11 +406,11 @@ val array_signature =
   , "  type array"
   , "  type ctx"
   , "  type shape"
-  , "  structure native : MONO_ARRAY"
-  , "  val new: ctx -> native.array -> shape -> array"
+  , "  structure Native : MONO_ARRAY"
+  , "  val new: ctx -> Native.array -> shape -> array"
   , "  val free: array -> unit"
   , "  val shape: array -> shape"
-  , "  val values: array -> native.array"
+  , "  val values: array -> Native.array"
   , "end"
   ]
 
