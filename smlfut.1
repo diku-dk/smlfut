@@ -76,25 +76,119 @@ Different context objects are not interchangeable, despite having the
 same type, and Futhark values obtained via one context may not be
 passed to another.
 .Pp
-Futhark's scalar types are mapped directly to the corresponding SML types, e.g.
-.Em f64
-to
-.Em Real64 .
-Arrays and opaque types are mapped to abstract SML types, each
-contained in a structure that defines functions for interacting with
-them.  Futhark types that are records have functions exposed for
-copying between them and SML records.  Note that if you convert a
-Futhark record into an SML record, you must still also free the
-original Futhark record at some point.
-.
-.Pp
-In contrast to the C API, the functions for copying data to and from
-Futhark are synchronous, and do not need explicit synchronisation.
-However, entry points are still asynchronous, meaning that errors can
-be delayed until a future operation.  Use the 'sync' function if you
-want to ensure all errors have been checked.
-.
+..
 .Sh Generated Interface
+.
+The generated structure implements the following signature (here using
+the name
+.Li FUTHARK ,
+but this is taken from the program file name or the
+.Fl -signature-name
+option).
+.Bd -literal
+signature FUTHARK = sig
+  type ctx
+  exception error of string
+  type cfg = {logging:bool,debugging:bool,profiling:bool}
+  val default_cfg : cfg
+  val ctx_new : cfg -> ctx
+  val ctx_free : ctx -> unit
+  val ctx_sync : ctx -> unit
+
+  (* Array type definitions... *)
+
+  (* Opaque type definitions... *)
+
+  structure Entry : sig
+    (* Entry points... *)
+  end
+end
+.Ed
+.
+All errors are reported by raising an
+.Li error
+exception.  Note that depending on the Futhark backend, entry points
+may execute asynchronously, and errors may not be reported until the
+next function call.  Use
+.Li ctx_sync
+to ensure all errors have been detected.
+.
+Futhark's scalar types are mapped directly to the corresponding SML
+types, e.g.
+.Li f64
+to
+.Li Real64 .
+.
+Each non-primitive type is represented by an appropriate structure,
+which presents an abstract interface to the underlying Futhark value,
+as discussed below.
+.
+.Ss Array types
+.
+Each array type is represented by a structure implementing the
+signature below.
+.
+.Bd -literal
+signature FUTHARK_ARRAY =
+sig
+  type array
+  type ctx
+  type shape
+  structure Native : MONO_ARRAY
+  val new: ctx -> native.array -> shape -> array
+  val free: array -> unit
+  val shape: array -> shape
+  val values: array -> native.array
+end
+.Ed
+.
+Futhark arrays can be converted to and from the corresponding SML
+arrays.  The
+.Li Native
+structure references exactly the corresponding monomorphic array
+structure from the SML Basis library.
+.
+In contrast to the raw C API, the
+.Li new
+and
+.Li values
+functions are synchronous, and do not need explicit synchronisation.
+.
+.Ss Opaque types
+.
+Each non-record opaque type is represented by a structure implementing
+the signature below.
+.Bd -literal
+signature FUTHARK_OPAQUE =
+sig
+  type t
+  type ctx
+  val free : t -> unit
+end
+.Ed
+.Ss Record types
+.
+Each record type is represented by a structure implementing the
+signature below.
+.Bd -literal
+signature FUTHARK_RECORD =
+sig
+  include FUTHARK_OPAQUE
+  type record
+  val values : t -> record
+  val new : ctx -> record -> t
+end
+.Ed
+.
+Any struct that implements this signature will refine the record type
+such that the Futhark value can be constructed from an appropriate SML
+record.
+.
+Note that if you convert a Futhark record into an SML record with
+.Li values ,
+you must still also free the original Futhark record at some point.
+.
+.Ss Entry points
 .
 Each Futhark entry point becomes a function with two parameters: the
 context object, and a tuple with one element per parameter of the
