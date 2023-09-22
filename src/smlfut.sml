@@ -298,12 +298,11 @@ fun generateTypeDef manifest
                 [( "arr"
                  , fficall (#new ops)
                      ([("ctx", "futhark_context"), ("data", data_t)]
-                      @ shape_args)
-                     pointer
+                      @ shape_args) pointer
                  )]
                 [ "if arr = " ^ null
                 , "then raise error (get_error ctx)"
-                , "else ctx_sync {cfg=cfg,ctx=ctx}; (ctx, arr)"
+                , "else sync ctx; (ctx, arr)"
                 ])
            @
            fundef "free" ["(ctx,data)"]
@@ -320,13 +319,17 @@ fun generateTypeDef manifest
                   , apply (smlArrayModule info ^ ".array")
                       ["n", blankRef manifest elemtype]
                   )
-                , ( "err"
-                  , fficall (#values ops)
-                      [ ("ctx", "futhark_context")
-                      , ("data", pointer)
-                      , ("out", data_t)
-                      ] "Int32.int"
+                , ( "()"
+                  , apply "error_check"
+                      [ fficall (#values ops)
+                          [ ("ctx", "futhark_context")
+                          , ("data", pointer)
+                          , ("out", data_t)
+                          ] "Int32.int"
+                      , "ctx"
+                      ]
                   )
+                , ("()", apply "sync" ["ctx"])
                 ] ["out"]))
       end
   | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
@@ -492,6 +495,12 @@ fun generate sig_name struct_name
       , "val default_cfg = " ^ def_cfg
       ] @ error_check
       @
+      fundef "sync" ["ctx"]
+        [apply "error_check"
+           [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
+           , "ctx"
+           ]]
+      @
       fundef "ctx_new" ["{logging,debugging,profiling}"]
         [ "let"
         , "val c_cfg ="
@@ -529,14 +538,8 @@ fun generate sig_name struct_name
           fficall "futhark_context_config_free"
             [("cfg", "futhark_context_config")] "unit"
         , "in () end"
-        ]
-      @
-      fundef "ctx_sync" ["{cfg,ctx}"]
-        [apply "error_check"
-           [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
-           , "ctx"
-           ]] @ type_defs @ ["structure Entry = struct"]
-      @ List.concat entry_defs @ ["end"]
+        ] @ fundef "ctx_sync" ["{cfg,ctx}"] [apply "sync" ["ctx"]] @ type_defs
+      @ ["structure Entry = struct"] @ List.concat entry_defs @ ["end"]
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
