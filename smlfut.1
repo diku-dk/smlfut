@@ -94,7 +94,13 @@ However, entry points are still asynchronous, meaning that errors can
 be delayed until a future operation.  Use the 'sync' function if you
 want to ensure all errors have been checked.
 .
-.Ss Linking Futhark with MLton
+.Sh Generated Interface
+.
+Each Futhark entry point becomes a function with two parameters: the
+context object, and a tuple with one element per parameter of the
+original Futhark function.
+.
+.Sh Linking Futhark with MLton
 .
 The Futhark compiler produces C code, which must be passed to
 .Xr mlton 1

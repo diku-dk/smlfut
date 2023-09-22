@@ -113,8 +113,8 @@ fun blankRef manifest t =
       | _ => raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
-  valspec name ("ctx" :: map (typeToSML manifest o #type_) inputs) (tuplify_t
-    (map (typeToSML manifest o #type_) outputs))
+  valspec name ["ctx", tuplify_t (map (typeToSML manifest o #type_) inputs)]
+    (tuplify_t (map (typeToSML manifest o #type_) outputs))
 
 fun mkSum [] = "0"
   | mkSum [x] = x
@@ -187,7 +187,8 @@ val error_check =
        , ("()", fficall "free" [("p", pointer)] "unit")
        ] ["s"]) @ ["end"]
   @
-  fundef "error_check" ["(err,ctx)"] ["if err = 0 then () else raise error (get_error(ctx))"]
+  fundef "error_check" ["(err,ctx)"]
+    ["if err = 0 then () else raise error (get_error(ctx))"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -221,7 +222,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
              | _ => "!" ^ v) :: outRes (i + 1) rest
           end
   in
-    fundef name (["{cfg,ctx}"] @ (inpParams 0 inputs))
+    fundef name (["{cfg,ctx}", tuplify_e (inpParams 0 inputs)])
       (letbind
          (outDecs 0 outputs
           @
