@@ -185,9 +185,9 @@ val error_check =
          )
        , ("s", "strcpy p")
        , ("()", fficall "free" [("p", pointer)] "unit")
-       ] ["raise error s"]) @ ["end"]
+       ] ["s"]) @ ["end"]
   @
-  fundef "error_check" ["(err,ctx)"] ["if err = 0 then () else get_error(ctx)"]
+  fundef "error_check" ["(err,ctx)"] ["if err = 0 then () else raise error (get_error(ctx))"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
