@@ -16,14 +16,14 @@ fun replicate 0 x = []
   | replicate n x =
       x :: replicate (n - 1) x
 
-fun tuplify_e [x] = x
-  | tuplify_e [] = "()"
-  | tuplify_e xs =
-      parens (punctuate "," xs)
+fun tuple_e [x] = x
+  | tuple_e [] = "()"
+  | tuple_e xs =
+      parens (punctuate ", " xs)
 
-fun tuplify_t [x] = x
-  | tuplify_t [] = "unit"
-  | tuplify_t xs = punctuate "*" xs
+fun tuple_t [x] = x
+  | tuple_t [] = "unit"
+  | tuple_t xs = punctuate " * " xs
 
 fun apply f args =
   f ^ parens (punctuate ", " args)

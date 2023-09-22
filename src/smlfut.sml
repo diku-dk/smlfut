@@ -7,7 +7,7 @@ fun fficall cfun args ret =
   in
     apply
       (parens
-         ("_import \"" ^ cfun ^ "\" public : " ^ tuplify_t arg_ts ^ " -> " ^ ret
+         ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> " ^ ret
           ^ ";")) arg_es
   end
 
@@ -113,8 +113,8 @@ fun blankRef manifest t =
       | _ => raise Fail ("blankRef: " ^ t)
 
 fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
-  valspec name ["ctx", tuplify_t (map (typeToSML manifest o #type_) inputs)]
-    (tuplify_t (map (typeToSML manifest o #type_) outputs))
+  valspec name ["ctx", tuple_t (map (typeToSML manifest o #type_) inputs)]
+    (tuple_t (map (typeToSML manifest o #type_) outputs))
 
 fun mkSum [] = "0"
   | mkSum [x] = x
@@ -141,7 +141,7 @@ fun mkShape (info: array_info) v =
      , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
          pointer
      )]
-    [tuplify_e (List.tabulate (#rank info, fn i =>
+    [tuple_e (List.tabulate (#rank info, fn i =>
        apply "Int64.toInt"
          [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
 
@@ -218,11 +218,11 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
             val v = "out" ^ Int.toString i
           in
             (case lookupType manifest (#type_ out) of
-               SOME _ => tuplify_e ["ctx", "!" ^ v]
+               SOME _ => tuple_e ["ctx", "!" ^ v]
              | _ => "!" ^ v) :: outRes (i + 1) rest
           end
   in
-    fundef name (["{cfg,ctx}", tuplify_e (inpParams 0 inputs)])
+    fundef name (["{cfg,ctx}", tuple_e (inpParams 0 inputs)])
       (letbind
          (outDecs 0 outputs
           @
@@ -232,11 +232,11 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
                  @ inpArgs 0 inputs) "Int32.int"
             )
           , ("()", "error_check(Int32.toInt ret, ctx)")
-          ]) [tuplify_e (outRes 0 outputs)])
+          ]) [tuple_e (outRes 0 outputs)])
   end
 
 fun shapeTypeOfRank d =
-  (tuplify_t o replicate d) "int"
+  (tuple_t o replicate d) "int"
 
 fun origNameComment name =
   ["(* " ^ name ^ " *)"]
@@ -284,7 +284,7 @@ fun generateTypeDef manifest
         val shape_args = map (fn x => (x, "Int64.int")) shape
       in
         structdef (futharkArrayStruct info) NONE
-          ([ typedef "array" [] (tuplify_t ["futhark_context", pointer])
+          ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
            , typedef "ctx" [] "ctx"
            , typedef "shape" [] (shapeTypeOfRank rank)
            , "structure native = " ^ smlArrayModule info
@@ -355,14 +355,14 @@ fun generateTypeDef manifest
                       ] ^ "; "
                     ^
                     (case lookupType manifest type_ of
-                       SOME _ => tuplify_e ["ctx", "!out"]
+                       SOME _ => tuple_e ["ctx", "!out"]
                      | _ => "!out") ^ " end"
                   )
                 fun fieldParam (name, {project, type_}) =
                   ( name
                   , case isPrimType type_ of
                       SOME _ => name
-                    | NONE => tuplify_e ["_", name]
+                    | NONE => tuple_e ["_", name]
                   )
                 fun fieldArg (name, {project, type_}) = (name, apiType type_)
                 fun fieldType (name, {project, type_}) =
@@ -389,7 +389,7 @@ fun generateTypeDef manifest
       in
         structdef (futharkOpaqueStruct name) NONE
           ([ typedef "ctx" [] "ctx"
-           , typedef "t" [] (tuplify_t ["futhark_context", pointer])
+           , typedef "t" [] (tuple_t ["futhark_context", pointer])
            ]
            @
            fundef "free" ["(ctx,data)"]
