@@ -177,16 +177,17 @@ val strcpy =
 val error_check =
   ["local"] @ map indent strlen @ map indent strcpy @ ["in"]
   @
-  fundef "error_check" ["(err,ctx)"]
-    [ "if err = 0 then () else"
-    , "let val p = "
-      ^ fficall "futhark_context_get_error" [("ctx", "futhark_context")] pointer
-    , "val s = strcpy p"
-    , "in"
-    , fficall "free" [("p", pointer)] "unit" ^ ";"
-    , "raise error s"
-    , "end"
-    ] @ ["end"]
+  fundef "get_error" ["ctx"]
+    (letbind
+       [ ( "p"
+         , fficall "futhark_context_get_error" [("ctx", "futhark_context")]
+             pointer
+         )
+       , ("s", "strcpy p")
+       , ("()", fficall "free" [("p", pointer)] "unit")
+       ] ["raise error s"]) @ ["end"]
+  @
+  fundef "error_check" ["(err,ctx)"] ["if err = 0 then () else get_error(ctx)"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -293,12 +294,17 @@ fun generateTypeDef manifest
              , parens ("data: " ^ data_t)
              , parens ("shape: " ^ shapeTypeOfRank rank)
              ]
-             [tuplify_e
-                [ "ctx"
-                , fficall (#new ops)
-                    ([("ctx", "futhark_context"), ("data", data_t)] @ shape_args)
-                    pointer
-                ]]
+             (letbind
+                [( "arr"
+                 , fficall (#new ops)
+                     ([("ctx", "futhark_context"), ("data", data_t)]
+                      @ shape_args)
+                     pointer
+                 )]
+                [ "if arr = " ^ null
+                , "then raise error (get_error ctx)"
+                , "else ctx_sync {cfg=cfg,ctx=ctx}; (ctx, arr)"
+                ])
            @
            fundef "free" ["(ctx,data)"]
              [apply "error_check"
