@@ -460,7 +460,7 @@ fun orderTypes types =
   end
 
 fun generate sig_name struct_name
-  (manifest as MANIFEST {backend, entry_points, types}) =
+  (manifest as MANIFEST {backend, version, entry_points, types}) =
   let
     val type_cfg = typedef "cfg" []
       (record_t
@@ -477,7 +477,10 @@ fun generate sig_name struct_name
     val type_defs =
       (List.concat o intersperse [""] o map (generateTypeDef manifest)) types
     val specs =
-      [ typespec "ctx" []
+      [ valspec "backend" [] "string"
+      , valspec "version" [] "string"
+      , ""
+      , typespec "ctx" []
       , exn_fut
       , type_cfg
       , valspec "default_cfg" [] "cfg"
@@ -488,7 +491,10 @@ fun generate sig_name struct_name
       ] @ type_specs @ ["", "structure Entry : sig"] @ map indent entry_specs
       @ ["end"]
     val defs =
-      [ typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
+      [ valdef "backend" (stringlit backend)
+      , valdef "version" (stringlit version)
+      , ""
+      , typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
       , exn_fut
       , type_cfg
       , typedef "futhark_context_config" [] pointer

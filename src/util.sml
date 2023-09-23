@@ -38,8 +38,17 @@ fun record_e fs =
 fun record_t fs =
   braces (punctuate "," (map (fn (f, t) => f ^ ":" ^ t) fs))
 
+fun stringlit s =
+    let fun escape #"\n" = "\\n"
+          | escape #"\"" = "\\\""
+          | escape c = str c
+    in "\"" ^ String.translate escape s ^ "\"" end
+
 fun fundef fname args body =
-    ["fun " ^ fname ^ " " ^ punctuate " " args ^ " ="] @ map indent body
+  ["fun " ^ fname ^ " " ^ punctuate " " args ^ " ="] @ map indent body
+
+fun valdef vname rhs =
+  "val " ^ vname ^ " = " ^ rhs
 
 fun valspec fname params ret =
   "val " ^ fname ^ " : " ^ punctuate " -> " (params @ [ret])

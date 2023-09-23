@@ -85,8 +85,12 @@ the name
 but this is taken from the program file name or the
 .Fl -signature-name
 option).
-.Bd -literal
-signature FUTHARK = sig
+.Bd -literal -offset indent
+signature FUTHARK =
+sig
+  val backend : string
+  val version : string
+
   type ctx
   exception error of string
   type cfg = {logging:bool,debugging:bool,profiling:bool}
@@ -104,6 +108,13 @@ signature FUTHARK = sig
   end
 end
 .Ed
+.Pp
+The
+.Li backend
+and
+.Li version
+definitions denote which Futhark backend and compiler version was used
+to compile the program.
 .
 All errors are reported by raising an
 .Li error
@@ -128,7 +139,7 @@ as discussed below.
 Each array type is represented by a structure implementing the
 signature below.
 .
-.Bd -literal
+.Bd -literal -offset indent
 signature FUTHARK_ARRAY =
 sig
   type array
@@ -141,7 +152,7 @@ sig
   val values: array -> native.array
 end
 .Ed
-.
+.Pp
 Futhark arrays can be converted to and from the corresponding SML
 arrays.  The
 .Li Native
@@ -158,7 +169,7 @@ functions are synchronous, and do not need explicit synchronisation.
 .
 Each non-record opaque type is represented by a structure implementing
 the signature below.
-.Bd -literal
+.Bd -literal -offset indent
 signature FUTHARK_OPAQUE =
 sig
   type t
@@ -170,7 +181,7 @@ end
 .
 Each record type is represented by a structure implementing the
 signature below.
-.Bd -literal
+.Bd -literal -offset indent
 signature FUTHARK_RECORD =
 sig
   include FUTHARK_OPAQUE
@@ -179,7 +190,7 @@ sig
   val new : ctx -> record -> t
 end
 .Ed
-.
+.Pp
 Any struct that implements this signature will refine the record type
 such that the Futhark value can be constructed from an appropriate SML
 record.
@@ -204,8 +215,9 @@ the .c file to
 on the command line, along with the .sml and/or .mlb file.  However,
 if you want to use a GPU backend, you must also pass the appropriate
 linker flags, e.g.
-.Pp
-.Li mlton foo.mlb foo.c -link-opt '-lcuda -lnvrtc -lcudart'
+.Bd -literal -offset indent
+mlton foo.mlb foo.c -link-opt '-lcuda -lnvrtc -lcudart'
+.Ed
 .Pp
 for CUDA.  See the Futhark documentation for the appropriate linker
 flags needed for a given backend.

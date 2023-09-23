@@ -29,6 +29,7 @@ datatype futhark_type =
 datatype manifest =
   MANIFEST of
     { backend: string
+    , version: string
     , entry_points: (string * entry_point) list
     , types: (string * futhark_type) list
     }
@@ -151,6 +152,7 @@ local
         in
           MANIFEST
             { backend = lookString obj "backend"
+            , version = lookString obj "version"
             , entry_points =
                 case Json.objLook obj "entry_points" of
                   SOME (Json.OBJECT entry_obj) =>
