@@ -70,13 +70,16 @@ fun futharkArrayStruct (info: array_info) =
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
-fun futharkOpaqueStructInside name =
+fun escapeName name =
   let
     fun escape c =
-      if constituent c then c else #"_"
+        if constituent c then c else #"_"
+    val name' = String.map escape name
   in
-      String.map escape name
+    if name <> name' then "unrep_" ^ name' else name
   end
+
+fun futharkOpaqueStructInside name = escapeName name
 
 fun futharkOpaqueTypeInside name = futharkOpaqueStructInside name ^ ".t"
 
@@ -267,7 +270,7 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
         NONE =>
           origNameComment name
           @
-          [ structspec name "FUTHARK_OPAQUE"
+          [ structspec (escapeName name) "FUTHARK_OPAQUE"
           , "where type ctx = ctx"
           ]
       | SOME record =>
@@ -399,7 +402,7 @@ fun generateTypeDef manifest
                      ])
               end
       in
-        structdef name NONE
+        structdef (escapeName name) NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuple_t ["futhark_context", pointer])
            ]
