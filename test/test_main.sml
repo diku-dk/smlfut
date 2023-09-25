@@ -94,11 +94,11 @@ fun test_fails ctx =
 
 fun test_record ctx =
   let
-    val record = Futhark.opaque_record.new ctx {a = 2, b = true}
-    val {a, b} = Futhark.opaque_record.values record
+    val record = Futhark.Opaque.record.new ctx {a = 2, b = true}
+    val {a, b} = Futhark.Opaque.record.values record
   in
     if a <> 2 orelse b <> true then raise Fail "Unexpected result." else ();
-    Futhark.opaque_record.free record
+    Futhark.Opaque.record.free record
   end
 
 val () =
