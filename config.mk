@@ -10,7 +10,8 @@ MLCOMP ?= $(MLKIT)
 
 MLTONFLAGS = \
 	-default-ann 'allowFFI true' \
-	-codegen c
+	-codegen c \
+	-default-type int64
 
 ifeq ($(FUTHARK_BACKEND),hip)
 MLTONFLAGS += -link-opt '-lhiprtc -lamdhip64'
