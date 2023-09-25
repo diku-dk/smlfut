@@ -70,13 +70,17 @@ fun futharkArrayStruct (info: array_info) =
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
-fun futharkOpaqueStruct name =
+fun futharkOpaqueStructInside name =
   let
     fun escape c =
       if constituent c then c else #"_"
   in
-    "opaque_" ^ String.map escape name
+      String.map escape name
   end
+
+fun futharkOpaqueTypeInside name = futharkOpaqueStructInside name ^ ".t"
+
+fun futharkOpaqueStruct name = "Opaque." ^ futharkOpaqueStructInside name
 
 fun futharkOpaqueType name = futharkOpaqueStruct name ^ ".t"
 
@@ -92,6 +96,14 @@ fun typeToSML manifest t =
   case lookupType manifest t of
     SOME t' => futharkTypeToSML t t'
   | NONE => primTypeToSML t
+
+fun typeToSMLInside manifest t =
+    let fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
+          | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueTypeInside name
+    in case lookupType manifest t of
+           SOME t' => futharkTypeToSML t t'
+         | NONE => primTypeToSML t
+    end
 
 fun blankRef manifest t =
   case lookupType manifest t of
@@ -255,17 +267,17 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
         NONE =>
           origNameComment name
           @
-          [ structspec (futharkOpaqueStruct name) "FUTHARK_OPAQUE"
+          [ structspec name "FUTHARK_OPAQUE"
           , "where type ctx = ctx"
           ]
       | SOME record =>
           let
             fun fieldType (name, {project, type_}) =
-              (name, typeToSML manifest type_)
+              (name, typeToSMLInside manifest type_)
           in
             origNameComment name
             @
-            [ structspec (futharkOpaqueStruct name) "FUTHARK_RECORD"
+            [ structspec name "FUTHARK_RECORD"
             , "where type ctx = ctx"
             , "  and type record = " ^ record_t (map fieldType (#fields record))
             ]
@@ -366,7 +378,7 @@ fun generateTypeDef manifest
                   )
                 fun fieldArg (name, {project, type_}) = (name, apiType type_)
                 fun fieldType (name, {project, type_}) =
-                  (name, typeToSML manifest type_)
+                  (name, typeToSMLInside manifest type_)
               in
                 [typedef "record" [] (record_t (map fieldType (#fields record)))]
                 @
@@ -387,7 +399,7 @@ fun generateTypeDef manifest
                      ])
               end
       in
-        structdef (futharkOpaqueStruct name) NONE
+        structdef name NONE
           ([ typedef "ctx" [] "ctx"
            , typedef "t" [] (tuple_t ["futhark_context", pointer])
            ]
@@ -455,8 +467,10 @@ fun orderTypes types =
           in
             ok @ order (map #1 ok) next
           end
+    fun isArray (_, FUTHARK_ARRAY _) = true
+      | isArray _ = false
   in
-    order [] types
+    List.partition isArray (order [] types)
   end
 
 fun generate sig_name struct_name
@@ -470,12 +484,20 @@ fun generate sig_name struct_name
         [("logging", "false"), ("debugging", "false"), ("profiling", "false")]
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
-    val entry_defs = map (generateEntryDef manifest) entry_points
-    val types = orderTypes types
-    val type_specs =
-      (List.concat o intersperse [""] o map (generateTypeSpec manifest)) types
-    val type_defs =
-      (List.concat o intersperse [""] o map (generateTypeDef manifest)) types
+    val entry_defs = List.concat (map (generateEntryDef manifest) entry_points)
+    val (array_types, opaque_types) = orderTypes types
+    val array_type_specs =
+      (List.concat o intersperse [""] o map (generateTypeSpec manifest))
+        array_types
+    val array_type_defs =
+      (List.concat o intersperse [""] o map (generateTypeDef manifest))
+        array_types
+    val opaque_type_specs =
+      (List.concat o intersperse [""] o map (generateTypeSpec manifest))
+        opaque_types
+    val opaque_type_defs =
+      (List.concat o intersperse [""] o map (generateTypeDef manifest))
+        opaque_types
     val specs =
       [ valspec "backend" [] "string"
       , valspec "version" [] "string"
@@ -488,8 +510,9 @@ fun generate sig_name struct_name
       , valspec "ctx_free" ["ctx"] "unit"
       , valspec "ctx_sync" ["ctx"] "unit"
       , ""
-      ] @ type_specs @ ["", "structure Entry : sig"] @ map indent entry_specs
-      @ ["end"]
+      ] @ array_type_specs
+      @ ["", "structure Opaque : sig"] @ map indent opaque_type_specs
+      @ ["end", "", "structure Entry : sig"] @ map indent entry_specs @ ["end"]
     val defs =
       [ valdef "backend" (stringlit backend)
       , valdef "version" (stringlit version)
@@ -545,8 +568,10 @@ fun generate sig_name struct_name
           fficall "futhark_context_config_free"
             [("cfg", "futhark_context_config")] "unit"
         , "in () end"
-        ] @ fundef "ctx_sync" ["{cfg,ctx}"] [apply "sync" ["ctx"]] @ type_defs
-      @ ["structure Entry = struct"] @ List.concat entry_defs @ ["end"]
+        ] @ fundef "ctx_sync" ["{cfg,ctx}"] [apply "sync" ["ctx"]]
+      @ array_type_defs @ ["structure Opaque = struct"] @ map indent opaque_type_defs
+      @ ["end"] @ ["structure Entry = struct"] @ map indent entry_defs
+      @ ["end"]
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
