@@ -229,7 +229,7 @@ fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) 
           [ ( "ret"
             , fficall cfun
                 ([("ctx", "futhark_context")] @ outArgs 0 outputs
-                 @ inpArgs 0 inputs) "Int32.int"
+                 @ inpArgs 0 inputs) "int"
             )
           , ("()", "error_check(Int32.toInt ret, ctx)")
           ]) [tuple_e (outRes 0 outputs)])
@@ -326,7 +326,7 @@ fun generateTypeDef manifest
                           [ ("ctx", "futhark_context")
                           , ("data", pointer)
                           , ("out", data_t)
-                          ] "Int32.int"
+                          ] "int"
                       , "ctx"
                       ]
                   )
