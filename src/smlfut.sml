@@ -593,7 +593,12 @@ fun main () =
       let
         val base = OS.Path.base json_file
         val basefile = OS.Path.file base
-        val m = manifestFromFile json_file
+        val m =
+          manifestFromFile json_file
+          handle IO.Io ({name = _, function = _, cause = OS.SysErr (_, SOME e)}) =>
+            ( print (json_file ^ ": " ^ OS.errorMsg e ^ "\n")
+            ; OS.Process.exit OS.Process.failure
+            )
         val output_dir =
           case !output_opt of
             NONE => OS.Path.dir json_file
