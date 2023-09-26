@@ -22,7 +22,7 @@ test/test.sml: test/test.json smlfut
 	./smlfut test/test.json
 
 test/test: test/test.json test/test_main.sml test/test.sml
-	$(MLTON) $(MLTONFLAGS) test/test.mlb test/test.c
+	$(MLTON) $(MLTONFLAGS) test/test.mlb test/test.c test/test.smlfut.c
 
 run_test: test/test
 	test/test

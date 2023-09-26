@@ -45,6 +45,21 @@ fun primTypeToSML t =
     SOME t' => t'
   | NONE => raise Fail ("Cannot map type to SML: " ^ t)
 
+fun cElemType "i8" = "int8_t"
+  | cElemType "i16" = "int16_t"
+  | cElemType "i32" = "int32_t"
+  | cElemType "i64" = "int64_t"
+  | cElemType "u8" = "uint8_t"
+  | cElemType "u16" = "uint16_t"
+  | cElemType "u32" = "uint32_t"
+  | cElemType "u64" = "uint64_t"
+  | cElemType "f16" = "uint16_t"
+  | cElemType "f32" = "float"
+  | cElemType "f64" = "double"
+  | cElemType "bool" = "bool"
+  | cElemType t =
+      raise Fail ("cElemType: " ^ t)
+
 fun smlArrayModule (info: array_info) =
   case #elemtype info of
     "i8" => "Int8Array"
@@ -62,6 +77,8 @@ fun smlArrayModule (info: array_info) =
   | _ =>
       raise Fail
         ("Cannot represent SML array with element type: " ^ #elemtype info)
+
+fun smlArraySliceModule info = smlArrayModule info ^ "Slice"
 
 fun smlArrayType info = smlArrayModule info ^ ".array"
 
@@ -162,6 +179,10 @@ fun mkShape (info: array_info) v =
     [tuple_e (List.tabulate (#rank info, fn i =>
        apply "Int64.toInt"
          [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
+
+fun valuesIntoFunction (array: array_info) =
+  "futhark_values_into_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array)
+  ^ "d"
 
 (* Extracting the Futhark error string is somewhat tricky, for two reasons:
 
@@ -265,8 +286,10 @@ fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
       [ structspec (futharkArrayStruct info) "FUTHARK_ARRAY"
       , "where type ctx = ctx"
       , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-      , "  and type Native.array = " ^ smlArrayModule info ^ ".array"
-      , "  and type Native.elem = " ^ smlArrayModule info ^ ".elem"
+      , "  and type Array.array = " ^ smlArrayModule info ^ ".array"
+      , "  and type Array.elem = " ^ smlArrayModule info ^ ".elem"
+      , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
+      , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
       ]
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
       case #record info of
@@ -305,7 +328,8 @@ fun generateTypeDef manifest
           ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
            , typedef "ctx" [] "ctx"
            , typedef "shape" [] (shapeTypeOfRank rank)
-           , "structure Native = " ^ smlArrayModule info
+           , "structure Array = " ^ smlArrayModule info
+           , "structure Slice = " ^ smlArraySliceModule info
            ]
            @
            fundef "new"
@@ -331,6 +355,23 @@ fun generateTypeDef manifest
                 , "ctx"
                 ]] @ fundef "shape" ["(ctx,data)"] (mkShape info "data")
            @
+           fundef "values_into" ["(ctx, data)", "slice"]
+             (letbind
+                [ ("(arr, i, n)", "Slice.base slice")
+                , ( "()"
+                  , apply "error_check"
+                      [ fficall (valuesIntoFunction info)
+                          [ ("ctx", "futhark_context")
+                          , ("data", pointer)
+                          , ("arr", data_t)
+                          , (apply "Int64.fromInt" ["i"], "Int64.int")
+                          ] "int"
+                      , "ctx"
+                      ]
+                  )
+                , ("()", apply "sync" ["ctx"])
+                ] ["()"])
+           @
            fundef "values" ["(ctx, data)"]
              (letbind
                 [ ("n", unlines (mkSize info "data"))
@@ -338,16 +379,7 @@ fun generateTypeDef manifest
                   , apply (smlArrayModule info ^ ".array")
                       ["n", blankRef manifest elemtype]
                   )
-                , ( "()"
-                  , apply "error_check"
-                      [ fficall (#values ops)
-                          [ ("ctx", "futhark_context")
-                          , ("data", pointer)
-                          , ("out", data_t)
-                          ] "int"
-                      , "ctx"
-                      ]
-                  )
+                , ("()", "values_into (ctx, data) (Slice.full out)")
                 , ("()", apply "sync" ["ctx"])
                 ] ["out"]))
       end
@@ -418,17 +450,32 @@ fun generateTypeDef manifest
                 ]] @ more)
       end
 
+fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
+  | generateTypeCFuns (name, FUTHARK_ARRAY array) =
+      let
+        val name = valuesIntoFunction array
+        val cet = cElemType (#elemtype array)
+      in
+        [ "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
+          ^ " *data, int64_t offset) {"
+        , "return " ^ #values (#ops array) ^ "(ctx, arr, data+offset);"
+        , "}"
+        ]
+      end
+
 val array_signature =
   [ "signature FUTHARK_ARRAY ="
   , "sig"
   , "  type array"
   , "  type ctx"
   , "  type shape"
-  , "  structure Native : MONO_ARRAY"
-  , "  val new: ctx -> Native.array -> shape -> array"
+  , "  structure Array : MONO_ARRAY"
+  , "  structure Slice : MONO_ARRAY_SLICE"
+  , "  val new: ctx -> Array.array -> shape -> array"
   , "  val free: array -> unit"
   , "  val shape: array -> shape"
-  , "  val values: array -> Native.array"
+  , "  val values: array -> Array.array"
+  , "  val values_into: array -> Slice.slice -> unit"
   , "end"
   ]
 
@@ -504,6 +551,7 @@ fun generate sig_name struct_name
     val opaque_type_defs =
       (List.concat o intersperse [""] o map (generateTypeDef manifest))
         opaque_types
+    val cfuns = (List.concat o intersperse [""] o map generateTypeCFuns) types
     val specs =
       [ valspec "backend" [] "string"
       , valspec "version" [] "string"
@@ -583,6 +631,7 @@ fun generate sig_name struct_name
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
          @ [""] @ sigdef sig_name specs)
     , unlines (structdef struct_name (SOME sig_name) defs)
+    , unlines ("#include <stdint.h>" :: cfuns)
     )
   end
 
@@ -642,12 +691,13 @@ fun main () =
           case !structure_opt of
             NONE => basefile
           | SOME s => s
-        val (sig_s, struct_s) = generate sig_name struct_name m
+        val (sig_s, struct_s, c_s) = generate sig_name struct_name m
       in
         checkValidName sig_name;
         checkValidName struct_name;
         writeFile (output_dir ^ "/" ^ basefile ^ ".sig") sig_s;
-        writeFile (output_dir ^ "/" ^ basefile ^ ".sml") struct_s
+        writeFile (output_dir ^ "/" ^ basefile ^ ".sml") struct_s;
+        writeFile (output_dir ^ "/" ^ basefile ^ ".smlfut.c") c_s
       end
   | (_, _, errors) =>
       (List.app err errors; err (usage ()); OS.Process.exit OS.Process.failure)
