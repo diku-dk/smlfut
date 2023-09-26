@@ -73,7 +73,7 @@ fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 fun escapeName name =
   let
     fun escape c =
-        if constituent c then c else #"_"
+      if constituent c then c else #"_"
     val name' = String.map escape name
   in
     if name <> name' then "unrep_" ^ name' else name
@@ -101,12 +101,15 @@ fun typeToSML manifest t =
   | NONE => primTypeToSML t
 
 fun typeToSMLInside manifest t =
-    let fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
-          | futharkTypeToSML name (FUTHARK_OPAQUE info) = futharkOpaqueTypeInside name
-    in case lookupType manifest t of
-           SOME t' => futharkTypeToSML t t'
-         | NONE => primTypeToSML t
-    end
+  let
+    fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
+      | futharkTypeToSML name (FUTHARK_OPAQUE info) =
+          futharkOpaqueTypeInside name
+  in
+    case lookupType manifest t of
+      SOME t' => futharkTypeToSML t t'
+    | NONE => primTypeToSML t
+  end
 
 fun blankRef manifest t =
   case lookupType manifest t of
@@ -513,9 +516,9 @@ fun generate sig_name struct_name
       , valspec "ctx_free" ["ctx"] "unit"
       , valspec "ctx_sync" ["ctx"] "unit"
       , ""
-      ] @ array_type_specs
-      @ ["", "structure Opaque : sig"] @ map indent opaque_type_specs
-      @ ["end", "", "structure Entry : sig"] @ map indent entry_specs @ ["end"]
+      ] @ array_type_specs @ ["", "structure Opaque : sig"]
+      @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
+      @ map indent entry_specs @ ["end"]
     val defs =
       [ valdef "backend" (stringlit backend)
       , valdef "version" (stringlit version)
@@ -572,9 +575,9 @@ fun generate sig_name struct_name
             [("cfg", "futhark_context_config")] "unit"
         , "in () end"
         ] @ fundef "ctx_sync" ["{cfg,ctx}"] [apply "sync" ["ctx"]]
-      @ array_type_defs @ ["structure Opaque = struct"] @ map indent opaque_type_defs
-      @ ["end"] @ ["structure Entry = struct"] @ map indent entry_defs
-      @ ["end"]
+      @ array_type_defs @ ["structure Opaque = struct"]
+      @ map indent opaque_type_defs @ ["end"] @ ["structure Entry = struct"]
+      @ map indent entry_defs @ ["end"]
   in
     ( unlines
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
