@@ -184,6 +184,9 @@ fun valuesIntoFunction (array: array_info) =
   "futhark_values_into_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array)
   ^ "d"
 
+fun newSyncFunction (array: array_info) =
+  "futhark_new_sync_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array) ^ "d"
+
 (* Extracting the Futhark error string is somewhat tricky, for two reasons:
 
 1) We have to convert it to an SML string.
@@ -339,13 +342,13 @@ fun generateTypeDef manifest
              ]
              (letbind
                 [( "arr"
-                 , fficall (#new ops)
+                 , fficall (newSyncFunction info)
                      ([("ctx", "futhark_context"), ("data", data_t)]
                       @ shape_args) pointer
                  )]
                 [ "if arr = " ^ null
                 , "then raise error (get_error ctx)"
-                , "else sync ctx; (ctx, arr)"
+                , "else (ctx, arr)"
                 ])
            @
            fundef "free" ["(ctx,data)"]
@@ -369,7 +372,6 @@ fun generateTypeDef manifest
                       , "ctx"
                       ]
                   )
-                , ("()", apply "sync" ["ctx"])
                 ] ["()"])
            @
            fundef "values" ["(ctx, data)"]
@@ -380,7 +382,6 @@ fun generateTypeDef manifest
                       ["n", blankRef manifest elemtype]
                   )
                 , ("()", "values_into (ctx, data) (Slice.full out)")
-                , ("()", apply "sync" ["ctx"])
                 ] ["out"]))
       end
   | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
@@ -455,10 +456,29 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
       let
         val name = valuesIntoFunction array
         val cet = cElemType (#elemtype array)
+        val dim_names = List.tabulate (#rank array, fn i =>
+          "dim" ^ Int.toString i)
+        val dim_params = concat (intersperse ", "
+          (map (fn s => "int64_t " ^ s) dim_names))
       in
-        [ "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
+        [ "int " ^ #values (#ops array) ^ "(void *ctx, void* arr, " ^ cet
+          ^ " *data);"
+        , "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
           ^ " *data, int64_t offset) {"
-        , "return " ^ #values (#ops array) ^ "(ctx, arr, data+offset);"
+        , "  int ret = " ^ #values (#ops array) ^ "(ctx, arr, data+offset);"
+        , "  if (ret == 0) { return futhark_context_sync(ctx); }"
+        , "  else { return ret; }"
+        , "}"
+        , "void* " ^ #new (#ops array) ^ "(void *ctx, " ^ cet ^ " *data, "
+          ^ dim_params ^ ");"
+        , "void* " ^ #free (#ops array) ^ "(void *ctx, void* arr);"
+        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet ^ " *data, "
+          ^ dim_params ^ ") {"
+        , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data, "
+          ^ concat (intersperse ", " dim_names) ^ ");"
+        , "  if (arr == NULL) { return NULL; }"
+        , "  if (futhark_context_sync(ctx) != 0) { " ^ #free (#ops array) ^ "(ctx, arr); return NULL; }"
+        , "  return arr;"
         , "}"
         ]
       end
@@ -631,7 +651,10 @@ fun generate sig_name struct_name
         (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
          @ [""] @ sigdef sig_name specs)
     , unlines (structdef struct_name (SOME sig_name) defs)
-    , unlines ("#include <stdint.h>" :: cfuns)
+    , unlines
+          (["#include <stdint.h>",
+            "#include <stddef.h>",
+            "int futhark_context_sync(void*);"] @ cfuns)
     )
   end
 
