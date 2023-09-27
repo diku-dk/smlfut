@@ -33,10 +33,10 @@ fun tapply f [] = f
       parens (punctuate ", " args) ^ f
 
 fun record_e fs =
-  braces (punctuate "," (map (fn (f, t) => f ^ "=" ^ t) fs))
+  braces (punctuate ", " (map (fn (f, t) => f ^ "=" ^ t) fs))
 
 fun record_t fs =
-  braces (punctuate "," (map (fn (f, t) => f ^ ":" ^ t) fs))
+  braces (punctuate ", " (map (fn (f, t) => f ^ ":" ^ t) fs))
 
 fun stringlit s =
     let fun escape #"\n" = "\\n"
