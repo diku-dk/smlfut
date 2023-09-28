@@ -18,15 +18,23 @@ smlfut: src/smlfut.mlb src/*.sml
 test/test.json: test/test.fut
 	$(FUTHARK) $(FUTHARK_BACKEND) --library $<
 
-test/test.sml: test/test.json smlfut
-	./smlfut test/test.json
+test_poly/test.sml: test/test.json smlfut
+	./smlfut --poly-arrays test/test.json -o test_poly
 
-test/test: test/test.json test/test_main.sml test/test.sml
-	$(MLTON) $(MLTONFLAGS) test/test.mlb test/test.c test/test.smlfut.c
+test_mono/test.sml: test/test.json smlfut
+	./smlfut --mono-arrays test/test.json -o test_mono
 
-run_test: test/test
-	test/test
+%/test: %/test.json %/test_main.sml %/test.sml
+	$(MLTON) $(MLTONFLAGS) $*/test.mlb $*/test.c $*/test.smlfut.c
+
+run_test_poly: test_poly/test
+	test_poly/test
+
+run_test_mono: test_mono/test
+	test_mono/test
+
+run_test: run_test_poly run_test_mono
 
 clean:
-	find src test -name MLB -exec rm -rf {} \;
+	find src test_poly test_mono -name MLB -exec rm -rf {} \;
 	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml

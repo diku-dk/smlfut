@@ -16,6 +16,11 @@ val null = "MLton.Pointer.null"
 
 (* Actual logic. *)
 
+datatype array_mode =
+  MONO_ARRAYS
+| POLY_ARRAYS
+val array_mode = ref POLY_ARRAYS
+
 fun constituent c =
   Char.isAlphaNum c orelse c = #"'" orelse c = #"_"
 
@@ -60,7 +65,7 @@ fun cElemType "i8" = "int8_t"
   | cElemType t =
       raise Fail ("cElemType: " ^ t)
 
-fun smlArrayModule (info: array_info) =
+fun monoArrayModule (info: array_info) =
   case #elemtype info of
     "i8" => "Int8Array"
   | "i16" => "Int16Array"
@@ -78,12 +83,20 @@ fun smlArrayModule (info: array_info) =
       raise Fail
         ("Cannot represent SML array with element type: " ^ #elemtype info)
 
-fun smlArraySliceModule info = smlArrayModule info ^ "Slice"
+fun smlArraySliceModule info = monoArrayModule info ^ "Slice"
 
-fun smlArrayType info = smlArrayModule info ^ ".array"
+fun smlArrayType info =
+  case !array_mode of
+    MONO_ARRAYS => monoArrayModule info ^ ".array"
+  | POLY_ARRAYS => primTypeToSML (#elemtype info) ^ " Array.array"
 
 fun futharkArrayStruct (info: array_info) =
-  smlArrayModule info ^ Int.toString (#rank info)
+  monoArrayModule info ^ Int.toString (#rank info)
+
+fun futharkArraySig (info: array_info) =
+    case !array_mode of
+        MONO_ARRAYS => "FUTHARK_MONO_ARRAY"
+      | POLY_ARRAYS => "FUTHARK_POLY_ARRAY"
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
@@ -286,14 +299,19 @@ fun origNameComment name =
 fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
       origNameComment name
       @
-      [ structspec (futharkArrayStruct info) "FUTHARK_ARRAY"
+      [ structspec (futharkArrayStruct info) (futharkArraySig info)
       , "where type ctx = ctx"
       , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-      , "  and type Array.array = " ^ smlArrayModule info ^ ".array"
-      , "  and type Array.elem = " ^ smlArrayModule info ^ ".elem"
-      , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
-      , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
       ]
+      @
+      (case !array_mode of
+         MONO_ARRAYS =>
+           [ "  and type Array.array = " ^ monoArrayModule info ^ ".array"
+           , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
+           , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
+           , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
+           ]
+       | POLY_ARRAYS => ["  and type elem = " ^ primTypeToSML (#elemtype info)])
   | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
       case #record info of
         NONE =>
@@ -331,9 +349,18 @@ fun generateTypeDef manifest
           ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
            , typedef "ctx" [] "ctx"
            , typedef "shape" [] (shapeTypeOfRank rank)
-           , "structure Array = " ^ smlArrayModule info
-           , "structure Slice = " ^ smlArraySliceModule info
            ]
+           @
+           (case !array_mode of
+              MONO_ARRAYS =>
+                [ "structure Array = " ^ monoArrayModule info
+                , "structure Slice = " ^ smlArraySliceModule info
+                ]
+            | POLY_ARRAYS =>
+                [ "structure Array = Array"
+                , "structure Slice = ArraySlice"
+                , "type elem = " ^ primTypeToSML elemtype
+                ])
            @
            fundef "new"
              [ "{ctx,cfg}"
@@ -378,8 +405,7 @@ fun generateTypeDef manifest
              (letbind
                 [ ("n", unlines (mkSize info "data"))
                 , ( "out"
-                  , apply (smlArrayModule info ^ ".array")
-                      ["n", blankRef manifest elemtype]
+                  , apply ("Array.array") ["n", blankRef manifest elemtype]
                   )
                 , ("()", "values_into (ctx, data) (Slice.full out)")
                 ] ["out"]))
@@ -477,28 +503,42 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
         , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data, "
           ^ concat (intersperse ", " dim_names) ^ ");"
         , "  if (arr == NULL) { return NULL; }"
-        , "  if (futhark_context_sync(ctx) != 0) { " ^ #free (#ops array) ^ "(ctx, arr); return NULL; }"
+        , "  if (futhark_context_sync(ctx) != 0) { " ^ #free (#ops array)
+          ^ "(ctx, arr); return NULL; }"
         , "  return arr;"
         , "}"
         ]
       end
 
-val array_signature =
-  [ "signature FUTHARK_ARRAY ="
-  , "sig"
-  , "  type array"
-  , "  type ctx"
-  , "  type shape"
-  , "  structure Array : MONO_ARRAY"
-  , "  structure Slice : MONO_ARRAY_SLICE"
-  , "  val new: ctx -> Array.array -> shape -> array"
-  , "  val free: array -> unit"
-  , "  val shape: array -> shape"
-  , "  val values: array -> Array.array"
-  , "  val values_into: array -> Slice.slice -> unit"
-  , "end"
-  ]
-
+fun array_signature MONO_ARRAYS =
+      [ "signature FUTHARK_MONO_ARRAY ="
+      , "sig"
+      , "  type array"
+      , "  type ctx"
+      , "  type shape"
+      , "  structure Array : MONO_ARRAY"
+      , "  structure Slice : MONO_ARRAY_SLICE"
+      , "  val new: ctx -> Array.array -> shape -> array"
+      , "  val free: array -> unit"
+      , "  val shape: array -> shape"
+      , "  val values: array -> Array.array"
+      , "  val values_into: array -> Slice.slice -> unit"
+      , "end"
+      ]
+  | array_signature POLY_ARRAYS =
+      [ "signature FUTHARK_POLY_ARRAY ="
+      , "sig"
+      , "  type array"
+      , "  type ctx"
+      , "  type shape"
+      , "  type elem"
+      , "  val new: ctx -> elem Array.array -> shape -> array"
+      , "  val free: array -> unit"
+      , "  val shape: array -> shape"
+      , "  val values: array -> elem Array.array"
+      , "  val values_into: array -> elem ArraySlice.slice -> unit"
+      , "end"
+      ]
 
 val opaque_signature =
   [ "signature FUTHARK_OPAQUE ="
@@ -648,14 +688,15 @@ fun generate sig_name struct_name
       @ map indent entry_defs @ ["end"]
   in
     ( unlines
-        (array_signature @ [""] @ opaque_signature @ [""] @ record_signature
-         @ [""] @ sigdef sig_name specs)
+        (array_signature (!array_mode) @ [""] @ opaque_signature @ [""]
+         @ record_signature @ [""] @ sigdef sig_name specs)
     , unlines (structdef struct_name (SOME sig_name) defs)
     , unlines
           (["#include <stdint.h>",
             "#include <stddef.h>",
             "#include <stdbool.h>",
-            "int futhark_context_sync(void*);"] @ cfuns)
+            "int futhark_context_sync(void*);"]
+            @ cfuns)
     )
   end
 
@@ -684,6 +725,16 @@ fun options () : unit GetOpt.opt_descr list =
     , long = ["output-directory"]
     , arg = GetOpt.REQ_ARG (fn s => output_opt := SOME s, "DIR")
     , desc = "Put files here."
+    }
+  , { short = []
+    , long = ["poly-arrays"]
+    , arg = GetOpt.NO_ARG (fn () => array_mode := POLY_ARRAYS)
+    , desc = "Use polymorphic SML arrays (the default)."
+    }
+  , { short = []
+    , long = ["mono-arrays"]
+    , arg = GetOpt.NO_ARG (fn () => array_mode := MONO_ARRAYS)
+    , desc = "Use monomorphic SML arrays."
     }
   ]
 and usage () =
