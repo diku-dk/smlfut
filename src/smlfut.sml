@@ -654,6 +654,7 @@ fun generate sig_name struct_name
     , unlines
           (["#include <stdint.h>",
             "#include <stddef.h>",
+            "#include <stdbool.h>",
             "int futhark_context_sync(void*);"] @ cfuns)
     )
   end
