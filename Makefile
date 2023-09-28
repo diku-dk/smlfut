@@ -27,13 +27,13 @@ test_mono/test.sml: test/test.json smlfut
 %/test: %/test.json %/test_main.sml %/test.sml
 	$(MLTON) $(MLTONFLAGS) $*/test.mlb $*/test.c $*/test.smlfut.c
 
-run_poly_test: test_poly/test
+run_test_poly: test_poly/test
 	test_poly/test
 
-run_mono_test: test_mono/test
+run_test_mono: test_mono/test
 	test_mono/test
 
-run_test: run_poly_test run_mono_test
+run_test: run_test_poly run_test_mono
 
 clean:
 	find src test_poly test_mono -name MLB -exec rm -rf {} \;
