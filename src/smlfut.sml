@@ -692,10 +692,11 @@ fun generate sig_name struct_name
          @ record_signature @ [""] @ sigdef sig_name specs)
     , unlines (structdef struct_name (SOME sig_name) defs)
     , unlines
-        ([ "#include <stdint.h>"
-         , "#include <stddef.h>"
-         , "int futhark_context_sync(void*);"
-         ] @ cfuns)
+          (["#include <stdint.h>",
+            "#include <stddef.h>",
+            "#include <stdbool.h>",
+            "int futhark_context_sync(void*);"]
+            @ cfuns)
     )
   end
 
