@@ -24,8 +24,8 @@ test_poly/test.sml: test/test.json smlfut
 test_mono/test.sml: test/test.json smlfut
 	./smlfut --mono-arrays test/test.json -o test_mono
 
-%/test: %/test.json %/test_main.sml %/test.sml
-	$(MLTON) $(MLTONFLAGS) $*/test.mlb $*/test.c $*/test.smlfut.c
+%/test: test/test.json %/test_main.sml %/test.sml
+	$(MLTON) $(MLTONFLAGS) $*/test.mlb test/test.c $*/test.smlfut.c
 
 run_test_poly: test_poly/test
 	test_poly/test
