@@ -22,6 +22,12 @@ with an SML compiler.
 .
 .Bl -tag
 .
+.It Fl -mono-arrays
+Use monomorphic arrays in signature.
+.
+.It Fl -poly-arrays
+Use polymorphic arrays in signature.  This is the default.
+.
 .It Fl -output-directory Ns = Ns Ar NAME
 Write output files to this directory.
 .
@@ -98,7 +104,7 @@ sig
   val ctx_free : ctx -> unit
   val ctx_sync : ctx -> unit
 
-  (* Array type definitions... *)
+  (* Array specs... *)
 
   structure Opaque : sig
     (* Opaque type specs... *)
@@ -137,11 +143,13 @@ as discussed below.
 .
 .Ss Array types
 .
-Each array type is represented by a structure implementing the
+When using
+.Fl -mono-arrays Ns
+, each array type is represented by a structure implementing the
 signature below.
 .
 .Bd -literal -offset indent
-signature FUTHARK_ARRAY =
+signature FUTHARK_MONO_ARRAY =
 sig
   type array
   type ctx
@@ -155,6 +163,25 @@ sig
   val values_into: array -> Slice.slice -> unit
 end
 .Ed
+.Pp
+When using
+.Fl -poly-arrays Ns
+(the default), arrays are represented by the following signature.
+.Bd -literal -offset indent
+signature FUTHARK_POLY_ARRAY =
+sig
+  type array
+  type ctx
+  type shape
+  type elem
+  val new: ctx -> elem Array.array -> shape -> array
+  val free: array -> unit
+  val shape: array -> shape
+  val values: array -> elem Array.array
+  val values_into: array -> elem ArraySlice.slice -> unit
+end
+.Ed
+
 .Pp
 Futhark arrays can be converted to and from the corresponding SML
 arrays.  The
