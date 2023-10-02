@@ -1,8 +1,0 @@
-local $(SML_LIB)/basis/basis.mlb
-      $(SML_LIB)/basis/mlton.mlb
-in
-      test.sig
-      test.sml
-      test_main.sml
-end
-
