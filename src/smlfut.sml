@@ -16,9 +16,12 @@ val null = "MLton.Pointer.null"
 
 (* Actual logic. *)
 
-datatype array_mode =
-  MONO_ARRAYS
-| POLY_ARRAYS
+fun gpuBackend "opencl" = true
+  | gpuBackend "cuda" = true
+  | gpuBackend "hip" = true
+  | gpuBackend _ = false
+
+datatype array_mode = MONO_ARRAYS | POLY_ARRAYS
 val array_mode = ref POLY_ARRAYS
 
 fun constituent c =
@@ -94,9 +97,9 @@ fun futharkArrayStruct (info: array_info) =
   monoArrayModule info ^ Int.toString (#rank info)
 
 fun futharkArraySig (info: array_info) =
-    case !array_mode of
-        MONO_ARRAYS => "FUTHARK_MONO_ARRAY"
-      | POLY_ARRAYS => "FUTHARK_POLY_ARRAY"
+  case !array_mode of
+    MONO_ARRAYS => "FUTHARK_MONO_ARRAY"
+  | POLY_ARRAYS => "FUTHARK_POLY_ARRAY"
 
 fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
@@ -589,12 +592,12 @@ fun orderTypes types =
 fun generate sig_name struct_name
   (manifest as MANIFEST {backend, version, entry_points, types}) =
   let
-    val type_cfg = typedef "cfg" []
-      (record_t
-         [("logging", "bool"), ("debugging", "bool"), ("profiling", "bool")])
-    val def_cfg =
-      record_e
-        [("logging", "false"), ("debugging", "false"), ("profiling", "false")]
+    val type_cfg = typedef "cfg" [] (record_t
+      ([("logging", "bool"), ("debugging", "bool"), ("profiling", "bool")]
+       @ (if gpuBackend backend then [("device", "string option")] else [])))
+    val def_cfg = record_e
+      ([("logging", "false"), ("debugging", "false"), ("profiling", "false")]
+       @ (if gpuBackend backend then [("device", "NONE")] else []))
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = List.concat (map (generateEntryDef manifest) entry_points)
@@ -643,33 +646,48 @@ fun generate sig_name struct_name
       ] @ error_check
       @
       structdef "Context" NONE
-        (fundef "new" ["{logging,debugging,profiling}"]
-           [ "let"
-           , "val c_cfg ="
-           , fficall "futhark_context_config_new" [] "futhark_context_config"
-           , "val () = "
-             ^
-             fficall "futhark_context_config_set_debugging"
-               [ ("c_cfg", "futhark_context_config")
-               , ("if debugging then 1 else 0", "int")
-               ] "unit"
-           , "val () ="
-             ^
-             fficall "futhark_context_config_set_logging"
-               [ ("c_cfg", "futhark_context_config")
-               , ("if logging then 1 else 0", "int")
-               ] "unit"
-           , "val () = "
-             ^
-             fficall "futhark_context_config_set_profiling"
-               [ ("c_cfg", "futhark_context_config")
-               , ("if profiling then 1 else 0", "int")
-               ] "unit"
-           , "val c_ctx ="
-           , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
-               "futhark_context"
-           , "in {cfg=c_cfg, ctx=c_ctx} end"
-           ]
+        (fundef "new" ["(cfg : cfg)"]
+           (letbind
+              ([ ( "c_cfg"
+                 , fficall "futhark_context_config_new" []
+                     "futhark_context_config"
+                 )
+               , ( "()"
+                 , fficall "futhark_context_config_set_debugging"
+                     [ ("c_cfg", "futhark_context_config")
+                     , ("if #debugging cfg then 1 else 0", "int")
+                     ] "unit"
+                 )
+               , ( "()"
+                 , fficall "futhark_context_config_set_logging"
+                     [ ("c_cfg", "futhark_context_config")
+                     , ("if #logging cfg then 1 else 0", "int")
+                     ] "unit"
+                 )
+               , ( "()"
+                 , fficall "futhark_context_config_set_profiling"
+                     [ ("c_cfg", "futhark_context_config")
+                     , ("if #profiling cfg then 1 else 0", "int")
+                     ] "unit"
+                 )
+               ]
+               @
+               (if gpuBackend backend then
+                  [( "()"
+                   , "case #device cfg of SOME d => "
+                     ^
+                     fficall "futhark_context_config_set_device"
+                       [ ("c_cfg", "futhark_context_config")
+                       , ("d", "string")
+                       ] "unit" ^ " | NONE => ()"
+                   )]
+                else
+                  [])
+               @
+               [( "c_ctx"
+                , fficall "futhark_context_new"
+                    [("c_cfg", "futhark_context_config")] "futhark_context"
+                )]) ["{cfg=c_cfg, ctx=c_ctx}"])
          @
          fundef "free" ["{cfg,ctx}"]
            [ "let"
@@ -697,11 +715,11 @@ fun generate sig_name struct_name
          @ record_signature @ [""] @ sigdef sig_name specs)
     , unlines (structdef struct_name (SOME sig_name) defs)
     , unlines
-          (["#include <stdint.h>",
-            "#include <stddef.h>",
-            "#include <stdbool.h>",
-            "int futhark_context_sync(void*);"]
-            @ cfuns)
+        ([ "#include <stdint.h>"
+         , "#include <stddef.h>"
+         , "#include <stdbool.h>"
+         , "int futhark_context_sync(void*);"
+         ] @ cfuns)
     )
   end
 

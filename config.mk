@@ -3,7 +3,7 @@ MANPREFIX ?= ${PREFIX}/share/man
 
 MLKIT=mlkit
 FUTHARK=futhark
-FUTHARK_BACKEND=c
+FUTHARK_BACKEND?=c
 MLTON=mlton
 
 MLCOMP ?= $(MLKIT)
