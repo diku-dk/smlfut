@@ -100,9 +100,12 @@ sig
   exception error of string
   type cfg = {logging:bool, debugging:bool, profiling:bool, cache:string option}
   val default_cfg : cfg
-  val ctx_new : cfg -> ctx
-  val ctx_free : ctx -> unit
-  val ctx_sync : ctx -> unit
+
+  structure Context : sig
+    val new : cfg -> ctx
+    val free : ctx -> unit
+    val sync : ctx -> unit
+  end
 
   (* Array specs... *)
 
