@@ -98,7 +98,10 @@ sig
 
   type ctx
   exception error of string
-  type cfg = {logging:bool, debugging:bool, profiling:bool, cache:string option}
+  type cfg = {logging:bool,
+              debugging:bool,
+              profiling:bool,
+              cache:string option}
   val default_cfg : cfg
 
   structure Context : sig
