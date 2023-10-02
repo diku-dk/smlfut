@@ -121,7 +121,10 @@ The
 and
 .Li version
 definitions denote which Futhark backend and compiler version was used
-to compile the program.
+to compile the program.  The
+.Li cfg
+record may have more fields depending on the Futhark backend used to
+compile the program.
 .
 All errors are reported by raising an
 .Li error
