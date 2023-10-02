@@ -620,9 +620,12 @@ fun generate sig_name struct_name
       , exn_fut
       , type_cfg
       , valspec "default_cfg" [] "cfg"
-      , valspec "ctx_new" ["cfg"] "ctx"
-      , valspec "ctx_free" ["ctx"] "unit"
-      , valspec "ctx_sync" ["ctx"] "unit"
+      , ""
+      , "structure Context : sig"
+      , indent (valspec "new" ["cfg"] "ctx")
+      , indent (valspec "free" ["ctx"] "unit")
+      , indent (valspec "sync" ["ctx"] "unit")
+      , "end"
       , ""
       ] @ array_type_specs @ ["", "structure Opaque : sig"]
       @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
@@ -639,51 +642,53 @@ fun generate sig_name struct_name
       , "val default_cfg = " ^ def_cfg
       ] @ error_check
       @
-      fundef "sync" ["ctx"]
-        [apply "error_check"
-           [ (fficall "futhark_context_sync" [("ctx", "futhark_context")] "int")
-           , "ctx"
-           ]]
-      @
-      fundef "ctx_new" ["{logging,debugging,profiling}"]
-        [ "let"
-        , "val c_cfg ="
-        , fficall "futhark_context_config_new" [] "futhark_context_config"
-        , "val () = "
-          ^
-          fficall "futhark_context_config_set_debugging"
-            [ ("c_cfg", "futhark_context_config")
-            , ("if debugging then 1 else 0", "int")
-            ] "unit"
-        , "val () ="
-          ^
-          fficall "futhark_context_config_set_logging"
-            [ ("c_cfg", "futhark_context_config")
-            , ("if logging then 1 else 0", "int")
-            ] "unit"
-        , "val () = "
-          ^
-          fficall "futhark_context_config_set_profiling"
-            [ ("c_cfg", "futhark_context_config")
-            , ("if profiling then 1 else 0", "int")
-            ] "unit"
-        , "val c_ctx ="
-        , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
-            "futhark_context"
-        , "in {cfg=c_cfg, ctx=c_ctx} end"
-        ]
-      @
-      fundef "ctx_free" ["{cfg,ctx}"]
-        [ "let"
-        , "val () = "
-          ^ fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
-        , "val () = "
-          ^
-          fficall "futhark_context_config_free"
-            [("cfg", "futhark_context_config")] "unit"
-        , "in () end"
-        ] @ fundef "ctx_sync" ["{cfg,ctx}"] [apply "sync" ["ctx"]]
-      @ array_type_defs @ ["structure Opaque = struct"]
+      structdef "Context" NONE
+        (fundef "new" ["{logging,debugging,profiling}"]
+           [ "let"
+           , "val c_cfg ="
+           , fficall "futhark_context_config_new" [] "futhark_context_config"
+           , "val () = "
+             ^
+             fficall "futhark_context_config_set_debugging"
+               [ ("c_cfg", "futhark_context_config")
+               , ("if debugging then 1 else 0", "int")
+               ] "unit"
+           , "val () ="
+             ^
+             fficall "futhark_context_config_set_logging"
+               [ ("c_cfg", "futhark_context_config")
+               , ("if logging then 1 else 0", "int")
+               ] "unit"
+           , "val () = "
+             ^
+             fficall "futhark_context_config_set_profiling"
+               [ ("c_cfg", "futhark_context_config")
+               , ("if profiling then 1 else 0", "int")
+               ] "unit"
+           , "val c_ctx ="
+           , fficall "futhark_context_new" [("c_cfg", "futhark_context_config")]
+               "futhark_context"
+           , "in {cfg=c_cfg, ctx=c_ctx} end"
+           ]
+         @
+         fundef "free" ["{cfg,ctx}"]
+           [ "let"
+           , "val () = "
+             ^
+             fficall "futhark_context_free" [("ctx", "futhark_context")] "unit"
+           , "val () = "
+             ^
+             fficall "futhark_context_config_free"
+               [("cfg", "futhark_context_config")] "unit"
+           , "in () end"
+           ]
+         @
+         fundef "sync" ["{cfg,ctx}"]
+           [apply "error_check"
+              [ (fficall "futhark_context_sync" [("ctx", "futhark_context")]
+                   "int")
+              , "ctx"
+              ]]) @ array_type_defs @ ["structure Opaque = struct"]
       @ map indent opaque_type_defs @ ["end"] @ ["structure Entry = struct"]
       @ map indent entry_defs @ ["end"]
   in
