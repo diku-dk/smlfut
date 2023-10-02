@@ -593,11 +593,17 @@ fun generate sig_name struct_name
   (manifest as MANIFEST {backend, version, entry_points, types}) =
   let
     val type_cfg = typedef "cfg" [] (record_t
-      ([("logging", "bool"), ("debugging", "bool"), ("profiling", "bool")]
-       @ (if gpuBackend backend then [("device", "string option")] else [])))
+      ([ ("logging", "bool")
+       , ("debugging", "bool")
+       , ("profiling", "bool")
+       , ("cache", "string option")
+       ] @ (if gpuBackend backend then [("device", "string option")] else [])))
     val def_cfg = record_e
-      ([("logging", "false"), ("debugging", "false"), ("profiling", "false")]
-       @ (if gpuBackend backend then [("device", "NONE")] else []))
+      ([ ("logging", "false")
+       , ("debugging", "false")
+       , ("profiling", "false")
+       , ("cache", "NONE")
+       ] @ (if gpuBackend backend then [("device", "NONE")] else []))
     val exn_fut = "exception error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = List.concat (map (generateEntryDef manifest) entry_points)
@@ -670,6 +676,13 @@ fun generate sig_name struct_name
                      , ("if #profiling cfg then 1 else 0", "int")
                      ] "unit"
                  )
+               , ( "()"
+                 , "case #cache cfg of SOME f => "
+                   ^
+                   fficall "futhark_context_config_set_cache_file"
+                     [("c_cfg", "futhark_context_config"), ("f", "string")]
+                     "unit" ^ " | NONE => ()"
+                 )
                ]
                @
                (if gpuBackend backend then
@@ -677,9 +690,8 @@ fun generate sig_name struct_name
                    , "case #device cfg of SOME d => "
                      ^
                      fficall "futhark_context_config_set_device"
-                       [ ("c_cfg", "futhark_context_config")
-                       , ("d", "string")
-                       ] "unit" ^ " | NONE => ()"
+                       [("c_cfg", "futhark_context_config"), ("d", "string")]
+                       "unit" ^ " | NONE => ()"
                    )]
                 else
                   [])

@@ -37,4 +37,4 @@ run_test: run_test_poly run_test_mono
 
 clean:
 	find src test_poly test_mono -name MLB -exec rm -rf {} \;
-	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml
+	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml test_*/*.c
