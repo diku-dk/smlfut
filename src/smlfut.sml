@@ -589,16 +589,25 @@ fun orderTypes types =
     List.partition isArray (order [] types)
   end
 
+fun cfgSetterSpec (name, type_) =
+  valspec name [type_, "cfg"] "cfg"
+
+fun cfgSetterDef cfg_fields (name, type_) =
+  fundef name
+    ["v", record_e (ListPair.zip (map #1 cfg_fields, map #1 cfg_fields))]
+    [record_e (map (fn (x, _) => (x, if x = name then "v" else x)) cfg_fields)]
+
 fun generate sig_name struct_name
   (manifest as MANIFEST {backend, version, entry_points, types}) =
   let
-    val type_cfg = typedef "cfg" [] (record_t
-      ([ ("logging", "bool")
-       , ("debugging", "bool")
-       , ("profiling", "bool")
-       , ("cache", "string option")
-       ] @ (if gpuBackend backend then [("device", "string option")] else [])))
-    val def_cfg = record_e
+    val cfg_fields =
+      [ ("logging", "bool")
+      , ("debugging", "bool")
+      , ("profiling", "bool")
+      , ("cache", "string option")
+      ] @ (if gpuBackend backend then [("device", "string option")] else [])
+    val cfg_type = typedef "cfg" [] (record_t cfg_fields)
+    val cfg_default = record_e
       ([ ("logging", "false")
        , ("debugging", "false")
        , ("profiling", "false")
@@ -627,11 +636,13 @@ fun generate sig_name struct_name
       , ""
       , typespec "ctx" []
       , exn_fut
-      , type_cfg
+      , cfg_type
       , ""
       , "structure Config : sig"
-      , indent (valspec "default" [] "cfg")
-      , "end"
+      ]
+      @ map indent (valspec "default" [] "cfg" :: map cfgSetterSpec cfg_fields)
+      @
+      [ "end"
       , ""
       , "structure Context : sig"
       , indent (valspec "new" ["cfg"] "ctx")
@@ -648,12 +659,14 @@ fun generate sig_name struct_name
       , ""
       , typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
       , exn_fut
-      , type_cfg
+      , cfg_type
       , typedef "futhark_context_config" [] pointer
       , typedef "futhark_context" [] pointer
       ] @ error_check
-      @ structdef "Config" NONE
-                  [valdef "default" def_cfg]
+      @
+      structdef "Config" NONE
+        (valdef "default" cfg_default
+         :: List.concat (map (cfgSetterDef cfg_fields) cfg_fields))
       @
       structdef "Context" NONE
         (fundef "new" ["(cfg : cfg)"]

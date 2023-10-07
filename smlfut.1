@@ -105,6 +105,10 @@ sig
 
   structure Config : sig
     val default : cfg
+    val logging : bool -> cfg -> cfg
+    val debugging : bool -> cfg -> cfg
+    val profiling : bool -> cfg -> cfg
+    val cache : string option -> cfg -> cfg
   end
 
   structure Context : sig
