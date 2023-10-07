@@ -103,7 +103,7 @@ fun test_record ctx =
 
 val () =
   let
-    val ctx = Futhark.Context.new Futhark.default_cfg
+    val ctx = Futhark.Context.new Futhark.Config.default
     val x = Futhark.Entry.main ctx 0w123
   in
     test_i32 ctx;

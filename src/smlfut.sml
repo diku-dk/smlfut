@@ -628,7 +628,10 @@ fun generate sig_name struct_name
       , typespec "ctx" []
       , exn_fut
       , type_cfg
-      , valspec "default_cfg" [] "cfg"
+      , ""
+      , "structure Config : sig"
+      , indent (valspec "default" [] "cfg")
+      , "end"
       , ""
       , "structure Context : sig"
       , indent (valspec "new" ["cfg"] "ctx")
@@ -648,8 +651,9 @@ fun generate sig_name struct_name
       , type_cfg
       , typedef "futhark_context_config" [] pointer
       , typedef "futhark_context" [] pointer
-      , "val default_cfg = " ^ def_cfg
       ] @ error_check
+      @ structdef "Config" NONE
+                  [valdef "default" def_cfg]
       @
       structdef "Context" NONE
         (fundef "new" ["(cfg : cfg)"]
