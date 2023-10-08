@@ -172,7 +172,7 @@ sig
   type shape
   structure Array : MONO_ARRAY
   structure Slice : MONO_ARRAY_SLICE
-  val new: ctx -> native.array -> shape -> array
+  val new: ctx -> Slice.slice -> shape -> array
   val free: array -> unit
   val shape: array -> shape
   val values: array -> native.array
@@ -190,7 +190,7 @@ sig
   type ctx
   type shape
   type elem
-  val new: ctx -> elem Array.array -> shape -> array
+  val new: ctx -> elem ArraySlice.slice -> shape -> array
   val free: array -> unit
   val shape: array -> shape
   val values: array -> elem Array.array

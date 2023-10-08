@@ -367,15 +367,19 @@ fun generateTypeDef manifest
            @
            fundef "new"
              [ "{ctx,cfg}"
-             , parens ("data: " ^ data_t)
+             , "slice"
              , parens ("shape: " ^ shapeTypeOfRank rank)
              ]
              (letbind
-                [( "arr"
-                 , fficall (newSyncFunction info)
-                     ([("ctx", "futhark_context"), ("data", data_t)]
-                      @ shape_args) pointer
-                 )]
+                [ ("(arr,i,n)", "Slice.base slice")
+                , ( "arr"
+                  , fficall (newSyncFunction info)
+                      ([ ("ctx", "futhark_context")
+                       , ("arr", data_t)
+                       , ("Int64.fromInt i", "Int64.int")
+                       ] @ shape_args) pointer
+                  )
+                ]
                 [ "if arr = " ^ null
                 , "then raise error (get_error ctx)"
                 , "else (ctx, arr)"
@@ -501,9 +505,9 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
         , "void* " ^ #new (#ops array) ^ "(void *ctx, " ^ cet ^ " *data, "
           ^ dim_params ^ ");"
         , "void* " ^ #free (#ops array) ^ "(void *ctx, void* arr);"
-        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet ^ " *data, "
+        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet ^ " *data, int64_t i,"
           ^ dim_params ^ ") {"
-        , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data, "
+        , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data+i, "
           ^ concat (intersperse ", " dim_names) ^ ");"
         , "  if (arr == NULL) { return NULL; }"
         , "  if (futhark_context_sync(ctx) != 0) { " ^ #free (#ops array)
@@ -521,7 +525,7 @@ fun array_signature MONO_ARRAYS =
       , "  type shape"
       , "  structure Array : MONO_ARRAY"
       , "  structure Slice : MONO_ARRAY_SLICE"
-      , "  val new: ctx -> Array.array -> shape -> array"
+      , "  val new: ctx -> Slice.slice -> shape -> array"
       , "  val free: array -> unit"
       , "  val shape: array -> shape"
       , "  val values: array -> Array.array"
@@ -535,7 +539,7 @@ fun array_signature MONO_ARRAYS =
       , "  type ctx"
       , "  type shape"
       , "  type elem"
-      , "  val new: ctx -> elem Array.array -> shape -> array"
+      , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
       , "  val free: array -> unit"
       , "  val shape: array -> shape"
       , "  val values: array -> elem Array.array"

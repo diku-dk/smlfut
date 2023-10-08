@@ -25,7 +25,8 @@ fun test ctx name f =
 
 fun test_i32 ctx =
   let
-    val arr_in = Futhark.Int32Array1.new ctx (Array.fromList [1, 2, 3]) 3
+    val arr_in =
+      Futhark.Int32Array1.new ctx (ArraySlice.full (Array.fromList [1, 2, 3])) 3
     val arr_out = Futhark.Entry.array_i32 ctx arr_in
     val arr_sml = Futhark.Int32Array1.values arr_out
     val () = Futhark.Context.sync ctx
@@ -41,7 +42,9 @@ fun test_i32 ctx =
 
 fun test_f64 ctx =
   let
-    val arr_in = Futhark.Real64Array1.new ctx (Array.fromList [1.0, 2.0, 3.0]) 3
+    val arr_in =
+      Futhark.Real64Array1.new ctx
+        (ArraySlice.full (Array.fromList [1.0, 2.0, 3.0])) 3
     val arr_out = Futhark.Entry.array_f64 ctx arr_in
     val arr_sml = Futhark.Real64Array1.values arr_out
     val () = Futhark.Context.sync ctx
@@ -49,15 +52,17 @@ fun test_f64 ctx =
     val () = Futhark.Real64Array1.free arr_in
     val () = Futhark.Real64Array1.free arr_out
   in
-    if not (arrayEqual Real64.== arr_sml expected) then raise Fail "Unexpected result"
-    else ()
+    if not (arrayEqual Real64.== arr_sml expected) then
+      raise Fail "Unexpected result"
+    else
+      ()
   end
 
 fun test_transpose ctx =
   let
     val arr_in =
-      Futhark.Int32Array2.new ctx (Array.fromList [1, 2, 3, 4, 5, 6])
-        (2, 3)
+      Futhark.Int32Array2.new ctx
+        (ArraySlice.full (Array.fromList [1, 2, 3, 4, 5, 6])) (2, 3)
     val arr_out = Futhark.Entry.transpose_i32 ctx arr_in
     val arr_sml = Futhark.Int32Array2.values arr_out
     val () = Futhark.Context.sync ctx
