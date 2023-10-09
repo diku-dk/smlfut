@@ -1,5 +1,6 @@
 .Dd 2023
-.Dt 1
+.Dt smlfut 1
+.Os DIKU
 .Sh Name
 .Nm smlfut
 .Nd call Futhark from Standard ML.
@@ -57,7 +58,7 @@ This will produce three files:
 .Li foo.sml Ns ,
 and
 .Li foo.smlfut.c Ns .
-
+.
 The first two files contain definitions of SML signatures and
 structures, while the last contains C code.  The name of the structure
 will be taken from the file basename (in this case 'foo') and the
@@ -82,7 +83,7 @@ same type, and Futhark values obtained via one context may not be
 passed to another.
 .Pp
 ..
-.Sh Generated Interface
+.Sh Top level signature
 .
 The generated structure implements the following signature (here using
 the name
@@ -98,23 +99,19 @@ sig
 
   type ctx
   exception error of string
-  type cfg = {logging:bool,
-              debugging:bool,
-              profiling:bool,
-              cache:string option}
+  type cfg = { logging:bool,
+             , debugging:bool
+             , profiling:bool
+             , cache:string option
+               (* Possibly more *)
+             }
 
   structure Config : sig
-    val default : cfg
-    val logging : bool -> cfg -> cfg
-    val debugging : bool -> cfg -> cfg
-    val profiling : bool -> cfg -> cfg
-    val cache : string option -> cfg -> cfg
+    (* See below *)
   end
 
   structure Context : sig
-    val new : cfg -> ctx
-    val free : ctx -> unit
-    val sync : ctx -> unit
+    (* See below *)
   end
 
   (* Array specs... *)
@@ -128,24 +125,88 @@ sig
   end
 end
 .Ed
-.Pp
-The
-.Li backend
-and
-.Li version
-definitions denote which Futhark backend and compiler version was used
-to compile the program.  The
-.Li cfg
-record may have more fields depending on the Futhark backend used to
-compile the program.
+.Ss Description
+.Bl -tag -width indent
+.It Li backend
+The Futhark compiler backend used to compile the program.
+.It Li version
+The Futhark compiler version used to compile the program.
+.It Li exception error
+Raised when Futhark execution fails.  The string is the error message
+reported by Futhark.
+.It Li type ctx
+Contains Futhark runtime state.
+.It Li type cfg
+Configuration record used to create the context.  Depending on the
+backend, this record may have more fields.
+.It Li structure Config/Context/Opaque/Entry
+See below.
+.El
 .
-All errors are reported by raising an
-.Li error
-exception.  Note that depending on the Futhark backend, entry points
-may execute asynchronously, and errors may not be reported until the
-next function call.  Use
-.Li ctx_sync
+.Pp
+.
+.Sh The Config Structure
+.
+Facilities for easily constructing or modifying configuration records.
+In particular, the structure exposes a
+.Em setter
+for each field in the configuration record, as SML's built-in
+facilities for updating records are rather cumbersome.
+.
+.Bd -literal -offset indent
+structure Config : sig
+  val default : cfg
+  val logging : bool -> cfg -> cfg
+  val debugging : bool -> cfg -> cfg
+  val profiling : bool -> cfg -> cfg
+  val cache : string option -> cfg -> cfg
+  (* Possibly more *)
+end
+.Ed
+.
+.Sh The Context Structure
+.
+The context is essentially the Futhark runtime state.
+.
+.Bd -literal -offset indent
+structure Context : sig
+  val new : cfg -> ctx
+  val free : ctx -> unit
+  val sync : ctx -> unit
+end
+.Ed
+.
+.Ss Description
+.Bl -tag -width indent
+.It Li new
+Create a context from a configuration.  May be quite slow - don't call
+it too often.
+.It Li free
+Free a context.  It may not be used again.  There is no guarantee that
+this frees any Futhark values (e.g. arrays) associated with the
+context.  To avoid memory leaks, make sure to free all values before
+freeing the context.
+.It Li sync
+Wait for all asynchronous operations to finish.  depending on the
+Futhark backend, entry points may execute asynchronously, and errors
+may not be reported until the next function call.  Use
+.Li Context.sync
 to ensure all errors have been detected.
+.El
+.
+.Sh The Entry Structure
+.
+This structure contains an SML function for each corresponding Futhark
+entry point.  They all have the type
+.Bd -literal -offset indent
+val foo : ctx -> args -> result
+.Ed
+.Pp
+where
+.Li args
+and
+.Li result
+may be tuples.
 .
 Futhark's scalar types are mapped directly to the corresponding SML
 types, e.g.
@@ -153,16 +214,20 @@ types, e.g.
 to
 .Li Real64 .
 .
-Each non-primitive type is represented by an appropriate structure,
-which presents an abstract interface to the underlying Futhark value,
-as discussed below.
+Each non-primitive type is represented by an appropriate abstract
+type, which presents an interface to the underlying Futhark value, as
+discussed below.  While execution of an entry point can in principle
+be asynchronous, this is not semantically visible.  The result(s)
+returned by an entry point can be used immediately.  You only need to call
+.Li Context.sync
+if you wish to check for errors.
 .
-.Ss Array types
+.Sh Array Structures
 .
 When using
 .Fl -mono-arrays Ns
-, each array type is represented by a structure implementing the
-signature below.
+, each Futhark array type is represented by a structure implementing
+the signature below.
 .
 .Bd -literal -offset indent
 signature FUTHARK_MONO_ARRAY =
@@ -197,7 +262,7 @@ sig
   val values_into: array -> elem ArraySlice.slice -> unit
 end
 .Ed
-
+.
 .Pp
 Futhark arrays can be converted to and from the corresponding SML
 arrays.  The
@@ -206,7 +271,7 @@ function raises
 .Li Size
 if the product of the shape is not equal to the size of the provided
 slice.
-
+.
 The
 .Li values
 function allocates a fresh array, while
@@ -231,7 +296,7 @@ and
 .Li values_into
 functions are synchronous, and do not need explicit synchronisation.
 .
-.Ss Opaque types
+.Sh Opaque types
 .
 Each non-record opaque type is represented by a structure implementing
 the signature below.
@@ -243,7 +308,7 @@ sig
   val free : t -> unit
 end
 .Ed
-.Ss Record types
+.Sh Record types
 .
 Each record type is represented by a structure implementing the
 signature below.
@@ -265,7 +330,7 @@ Note that if you convert a Futhark record into an SML record with
 .Li values ,
 you must still also free the original Futhark record at some point.
 .
-.Ss Entry points
+.Sh Entry points
 .
 Each Futhark entry point becomes a function with two parameters: the
 context object, and a tuple with one element per parameter of the
