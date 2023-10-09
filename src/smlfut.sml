@@ -366,12 +366,12 @@ fun generateTypeDef manifest
                 ])
            @
            fundef "new"
-             [ "{ctx,cfg}"
-             , "slice"
-             , parens ("shape: " ^ shapeTypeOfRank rank)
-             ]
+             ["{ctx,cfg}", "slice", parens ("shape: " ^ shapeTypeOfRank rank)]
              (letbind
                 [ ("(arr,i,n)", "Slice.base slice")
+                , ( "()"
+                  , "if " ^ mkProd shape ^ " <> n then raise Size else ()"
+                  )
                 , ( "arr"
                   , fficall (newSyncFunction info)
                       ([ ("ctx", "futhark_context")
@@ -395,6 +395,8 @@ fun generateTypeDef manifest
            fundef "values_into" ["(ctx, data)", "slice"]
              (letbind
                 [ ("(arr, i, n)", "Slice.base slice")
+                , ("m", unlines (mkSize info "data"))
+                , ("()", "if n <> m then raise Size else ()")
                 , ( "()"
                   , apply "error_check"
                       [ fficall (valuesIntoFunction info)
@@ -505,8 +507,8 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
         , "void* " ^ #new (#ops array) ^ "(void *ctx, " ^ cet ^ " *data, "
           ^ dim_params ^ ");"
         , "void* " ^ #free (#ops array) ^ "(void *ctx, void* arr);"
-        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet ^ " *data, int64_t i,"
-          ^ dim_params ^ ") {"
+        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet
+          ^ " *data, int64_t i," ^ dim_params ^ ") {"
         , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data+i, "
           ^ concat (intersperse ", " dim_names) ^ ");"
         , "  if (arr == NULL) { return NULL; }"

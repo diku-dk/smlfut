@@ -201,10 +201,22 @@ end
 .Pp
 Futhark arrays can be converted to and from the corresponding SML
 arrays.  The
+.Li new
+function raises
+.Li Size
+if the product of the shape is not equal to the size of the provided
+slice.
+
+The
 .Li values
 function allocates a fresh array, while
 .Li values_into
-copies into an existing array slice.  The
+copies into an existing array slice.  The slice must have exactly the
+same size as the array, or a
+.Li Size
+exception is raised.
+.Pp
+The
 .Li Array
 and
 .Li Slice

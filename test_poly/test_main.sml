@@ -84,6 +84,25 @@ fun test_fails ctx =
     if String.isPrefix "Error: division by zero" e then ()
     else raise Fail ("Got unexpected error: " ^ e)
 
+fun test_size_fails ctx =
+  ( Futhark.Int32Array2.new ctx
+      (ArraySlice.full (Array.fromList [1, 2, 3, 4, 5])) (2, 3)
+  ; raise Fail "Should have failed."
+  )
+  handle Size => ()
+
+fun test_values_fails ctx =
+    let val arr =
+            Futhark.Int32Array2.new ctx
+                                    (ArraySlice.full (Array.fromList [1, 2, 3, 4, 5,6]))
+                                    (2,3)
+        val out_slice = ArraySlice.slice(Array.fromList [1, 2, 3, 4, 5, 6], 1, NONE)
+    in
+      (Futhark.Int32Array2.values_into arr out_slice;
+       raise Fail "Should have failed")
+      handle Size => Futhark.Int32Array2.free arr
+    end
+
 fun test_record ctx =
   let
     val record = Futhark.Opaque.record.new ctx {a = 2, b = true}
@@ -105,6 +124,10 @@ val () =
     test ctx "text_f64" test_f64;
 
     test ctx "test_fails" test_fails;
+
+    test ctx "test_size_fails" test_size_fails;
+
+    test ctx "test_values_fails" test_values_fails;
 
     test ctx "test_record" test_record;
 
