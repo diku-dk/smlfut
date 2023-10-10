@@ -224,10 +224,12 @@ if you wish to check for errors.
 .
 .Sh Array Structures
 .
-When using
+Depending on whether
 .Fl -mono-arrays Ns
-, each Futhark array type is represented by a structure implementing
-the signature below.
+or
+.Fl -poly-arrays Ns
+is used, Futhark array type is represented by a structure implementing
+one of the the signatures below.
 .
 .Bd -literal -offset indent
 signature FUTHARK_MONO_ARRAY =
@@ -243,12 +245,7 @@ sig
   val values: array -> native.array
   val values_into: array -> Slice.slice -> unit
 end
-.Ed
-.Pp
-When using
-.Fl -poly-arrays Ns
-(the default), arrays are represented by the following signature.
-.Bd -literal -offset indent
+
 signature FUTHARK_POLY_ARRAY =
 sig
   type array
@@ -262,39 +259,42 @@ sig
   val values_into: array -> elem ArraySlice.slice -> unit
 end
 .Ed
-.
 .Pp
-Futhark arrays can be converted to and from the corresponding SML
-arrays.  The
-.Li new
-function raises
-.Li Size
-if the product of the shape is not equal to the size of the provided
-slice.
+The name of an array structure is similar to the naming of monomorphic
+arrays in the SML basis library, e.g.,
+.Li Int32Array1
+for
+.Li []i32
+and Real32Array32
+for
+.Li [][]f32 .
 .
-The
-.Li values
-function allocates a fresh array, while
-.Li values_into
-copies into an existing array slice.  The slice must have exactly the
-same size as the array, or a
-.Li Size
-exception is raised.
-.Pp
-The
-.Li Array
-and
-.Li Slice
-structures references exactly the corresponding monomorphic array and
-array slice structures from the SML Basis library.
+.Ss Description
 .
-In contrast to the raw C API, the
-.Li new
-and
-.Li values
-/
-.Li values_into
-functions are synchronous, and do not need explicit synchronisation.
+.Bl -tag -width indent
+.It Li array
+The abstract array type.
+.It Li ctx
+The Futhark context type.  An array structure refines this to be identitical to the
+.Li ctx
+type of the top level structure.
+.It Li shape
+A type for the shape of the array. This is
+.Li int
+for single dimensional arrays, and otherwise a tuple of integers.
+.It Li new
+Construct a Futhark array from an SML array slice.  Raises
+.Li Size
+if the length of the array slice is not equal to the product of the
+provided shape.
+.It Li values
+Synchronously copy the Futhark array into a freshly constructed SML array.
+.It Li values
+Synchronously copy the Futhark array into an existing SML array slice.  Raises
+.Li Size
+if the length of the slice is not equal to the product of the array
+shape.
+.El
 .
 .Sh Opaque types
 .
