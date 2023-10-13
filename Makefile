@@ -4,7 +4,7 @@ all: smlfut
 
 install: smlfut smlfut.1
 	install -d $(PREFIX)/bin/
-	install -m 644 smlfut ${PREFIX}/bin/
+	install -m 755 smlfut ${PREFIX}/bin/
 	install -d $(MANPREFIX)/man1
 	install -m 644 smlfut.1 ${MANPREFIX}/man1/
 
