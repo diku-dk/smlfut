@@ -800,6 +800,9 @@ and usage () =
 
 fun err s = TextIO.output (TextIO.stdErr, s)
 
+fun localIfEmpty "" = "."
+  | localIfEmpty s = s
+
 fun main () =
   case GetOpt.getopt GetOpt.PERMUTE (options ()) (CommandLine.arguments ()) of
     (_, [json_file], []) =>
@@ -814,7 +817,7 @@ fun main () =
             )
         val output_dir =
           case !output_opt of
-            NONE => OS.Path.dir json_file
+            NONE => localIfEmpty (OS.Path.dir json_file)
           | SOME s => s
         val sig_name =
           case !signature_opt of
