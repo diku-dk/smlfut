@@ -35,5 +35,5 @@ smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf
 
 clean:
-	find src test_poly test_mono -name MLB -exec rm -rf {} \;
+	find src test_poly test_mono -name MLB -exec rm -rf {} +
 	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml test_*/*.c
