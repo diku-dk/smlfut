@@ -369,9 +369,7 @@ fun generateTypeDef manifest
              ["{ctx,cfg}", "slice", parens ("shape: " ^ shapeTypeOfRank rank)]
              (letbind
                 [ ("(arr,i,n)", "Slice.base slice")
-                , ( "()"
-                  , "if " ^ mkProd shape ^ " <> n then raise Size else ()"
-                  )
+                , ("()", "if " ^ mkProd shape ^ " <> n then raise Size else ()")
                 , ( "arr"
                   , fficall (newSyncFunction info)
                       ([ ("ctx", "futhark_context")
@@ -762,12 +760,24 @@ val signature_opt: string option ref = ref NONE
 val structure_opt: string option ref = ref NONE
 val output_opt: string option ref = ref NONE
 
+fun showVersion () =
+  ( print ("smlfut " ^ version ^ "\n")
+  ; print ("Developed at the University of Copenhagen\n")
+  ; print ("Released under the terms of the GPLv3 or later.\n")
+  ; OS.Process.exit OS.Process.success
+  )
+
 fun options () : unit GetOpt.opt_descr list =
   [ { short = [#"h"]
     , long = ["help"]
     , arg = GetOpt.NO_ARG (fn () =>
         (print (usage ()); OS.Process.exit OS.Process.success))
     , desc = "Show help text."
+    }
+  , { short = [#"V"]
+    , long = ["version"]
+    , arg = GetOpt.NO_ARG showVersion
+    , desc = "Show version information"
     }
   , { short = []
     , long = ["signature-name"]
