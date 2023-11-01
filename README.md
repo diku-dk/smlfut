@@ -9,7 +9,7 @@ manual](https://github.com/diku-dk/smlfut/releases/download/latest/smlfut.pdf).
 ## Installation
 
 `smlfut` is written in SML.  By default the Makefile uses
-[MLkit](https://github.com/melsman/mlkit), but `smlfut` can also be
+[MLKit](https://github.com/melsman/mlkit), but `smlfut` can also be
 compiled with [MLton](https://mlton.org).  Run
 
     make
