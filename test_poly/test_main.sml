@@ -80,7 +80,7 @@ fun test_fails ctx =
   ; Futhark.Context.sync ctx
   ; raise Fail "Should have failed."
   )
-  handle Futhark.error e =>
+  handle Futhark.Error e =>
     if String.isPrefix "Error: division by zero" e then ()
     else raise Fail ("Got unexpected error: " ^ e)
 

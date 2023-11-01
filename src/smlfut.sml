@@ -246,7 +246,7 @@ val error_check =
        ] ["s"]) @ ["end"]
   @
   fundef "error_check" ["(err,ctx)"]
-    ["if err = 0 then () else raise error (get_error(ctx))"]
+    ["if err = 0 then () else raise Error (get_error(ctx))"]
 
 fun generateEntryDef manifest (name, ep as entry_point {cfun, inputs, outputs}) =
   let
@@ -379,7 +379,7 @@ fun generateTypeDef manifest
                   )
                 ]
                 [ "if arr = " ^ null
-                , "then raise error (get_error ctx)"
+                , "then raise Error (get_error ctx)"
                 , "else (ctx, arr)"
                 ])
            @
@@ -611,6 +611,7 @@ fun generate sig_name struct_name
       , ("debugging", "bool")
       , ("profiling", "bool")
       , ("cache", "string option")
+      , ("tuning", "(string * int) list")
       ] @ (if gpuBackend backend then [("device", "string option")] else [])
     val cfg_type = typedef "cfg" [] (record_t cfg_fields)
     val cfg_default = record_e
@@ -618,8 +619,9 @@ fun generate sig_name struct_name
        , ("debugging", "false")
        , ("profiling", "false")
        , ("cache", "NONE")
+       , ("tuning", "[]")
        ] @ (if gpuBackend backend then [("device", "NONE")] else []))
-    val exn_fut = "exception error of string"
+    val exn_fut = "exception Error of string"
     val entry_specs = map (generateEntrySpec manifest) entry_points
     val entry_defs = List.concat (map (generateEntryDef manifest) entry_points)
     val (array_types, opaque_types) = orderTypes types
@@ -681,6 +683,21 @@ fun generate sig_name struct_name
                  , fficall "futhark_context_config_new" []
                      "futhark_context_config"
                  )
+               , ( "setTuningParam"
+                 , ("fn (v,x) => " ^ "if "
+                    ^
+                    fficall "futhark_context_config"
+                      [ ("c_cfg", "futhark_context_config")
+                      , ("v", "string")
+                      , ("Int64.fromInt x", "int")
+                      ] "int" ^ " <> 0 then raise "
+                    ^
+                    parens
+                      (fficall "futhark_context_config_free"
+                         [("c_cfg", "futhark_context_config")] "unit"
+                       ^ "; raise Error (\"Unknown tuning parameter: \" ^ v")
+                    ^ ") else ()")
+                 )
                , ( "()"
                  , fficall "futhark_context_config_set_debugging"
                      [ ("c_cfg", "futhark_context_config")
@@ -706,6 +723,7 @@ fun generate sig_name struct_name
                      [("c_cfg", "futhark_context_config"), ("f", "string")]
                      "unit" ^ " | NONE => ()"
                  )
+               , ("()", "List.app setTuningParam (#tuning cfg)")
                ]
                @
                (if gpuBackend backend then

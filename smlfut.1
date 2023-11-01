@@ -102,11 +102,12 @@ sig
   val version : string
 
   type ctx
-  exception error of string
+  exception Error of string
   type cfg = { logging:bool,
              , debugging:bool
              , profiling:bool
              , cache:string option
+             , tuning: (string * int) list
                (* Possibly more *)
              }
 
@@ -135,7 +136,7 @@ end
 The Futhark compiler backend used to compile the program.
 .It Li version
 The Futhark compiler version used to compile the program.
-.It Li exception error
+.It Li exception Error
 Raised when Futhark execution fails.  The string is the error message
 reported by Futhark.
 .It Li type ctx
@@ -164,6 +165,7 @@ structure Config : sig
   val debugging : bool -> cfg -> cfg
   val profiling : bool -> cfg -> cfg
   val cache : string option -> cfg -> cfg
+  val tuning : (string * int) list -> cfg -> cfg
   (* Possibly more *)
 end
 .Ed
@@ -184,7 +186,10 @@ end
 .Bl -tag -width indent
 .It Li new
 Create a context from a configuration.  May be quite slow - don't call
-it too often.
+it too often.  May throw
+.Li Error
+if initialisation of the Futhark context fails, or if an invalid
+tuning parameter is provided in the configuration.
 .It Li free
 Free a context.  It may not be used again.  There is no guarantee that
 this frees any Futhark values (e.g. arrays) associated with the
