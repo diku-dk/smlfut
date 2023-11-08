@@ -179,6 +179,7 @@ structure Context : sig
   val new : cfg -> ctx
   val free : ctx -> unit
   val sync : ctx -> unit
+  val report : ctx -> string
 end
 .Ed
 .
@@ -201,6 +202,11 @@ Futhark backend, entry points may execute asynchronously, and errors
 may not be reported until the next function call.  Use
 .Li Context.sync
 to ensure all errors have been detected.
+.It Li report
+Retrieve (and reset) current profiling information. Contains much more
+interesting information if the configuration had its
+.Li profiling
+field set to true.
 .El
 .
 .Sh The Entry Structure

@@ -233,8 +233,6 @@ val strcpy =
   ]
 
 val error_check =
-  ["local"] @ map indent strlen @ map indent strcpy @ ["in"]
-  @
   fundef "get_error" ["ctx"]
     (letbind
        [ ( "p"
@@ -243,7 +241,7 @@ val error_check =
          )
        , ("s", "strcpy p")
        , ("()", fficall "free" [("p", pointer)] "unit")
-       ] ["s"]) @ ["end"]
+       ] ["s"])
   @
   fundef "error_check" ["(err,ctx)"]
     ["if err = 0 then () else raise Error (get_error(ctx))"]
@@ -656,13 +654,17 @@ fun generate sig_name struct_name
       , indent (valspec "new" ["cfg"] "ctx")
       , indent (valspec "free" ["ctx"] "unit")
       , indent (valspec "sync" ["ctx"] "unit")
+      , indent (valspec "report" ["ctx"] "string")
       , "end"
       , ""
       ] @ array_type_specs @ ["", "structure Opaque : sig"]
       @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
       @ map indent entry_specs @ ["end"]
     val defs =
-      [ valdef "backend" (stringlit backend)
+      strlen @ strcpy
+      @
+      [ ""
+      , valdef "backend" (stringlit backend)
       , valdef "version" (stringlit version)
       , ""
       , typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
@@ -759,7 +761,17 @@ fun generate sig_name struct_name
               [ (fficall "futhark_context_sync" [("ctx", "futhark_context")]
                    "int")
               , "ctx"
-              ]]) @ array_type_defs @ ["structure Opaque = struct"]
+              ]]
+         @
+         fundef "report" ["{cfg,ctx}"]
+           (letbind
+              [ ( "p"
+                , fficall "futhark_context_report" [("ctx", "futhark_context")]
+                    pointer
+                )
+              , ("s", "strcpy p")
+              , ("()", fficall "free" [("p", pointer)] "unit")
+              ] ["s"])) @ array_type_defs @ ["structure Opaque = struct"]
       @ map indent opaque_type_defs @ ["end"] @ ["structure Entry = struct"]
       @ map indent entry_defs @ ["end"]
   in
