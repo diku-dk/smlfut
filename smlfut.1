@@ -180,6 +180,8 @@ structure Context : sig
   val free : ctx -> unit
   val sync : ctx -> unit
   val report : ctx -> string
+  val pauseProfiling : ctx -> bool
+  val unpauseProfiling : ctx -> bool
 end
 .Ed
 .
@@ -207,6 +209,14 @@ Retrieve (and reset) current profiling information. Contains much more
 interesting information if the configuration had its
 .Li profiling
 field set to true.
+.It Li pauseProfiling
+Temporarily suspend the collection of profiling information. Has no
+   effect if profiling was not enabled in the configuration, or if
+   profiling is already paused.
+.It Li unpauseProfiling
+Resume the collection of profiling information. Has no effect if
+profiling was not enabled in the configuration, or if profiling is not
+currently paused.
 .El
 .
 .Sh The Entry Structure
