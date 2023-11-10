@@ -657,6 +657,7 @@ fun generate sig_name struct_name
       , indent (valspec "report" ["ctx"] "string")
       , indent (valspec "pauseProfiling" ["ctx"] "unit")
       , indent (valspec "unpauseProfiling" ["ctx"] "unit")
+      , indent (valspec "clearCaches" ["ctx"] "unit")
       , "end"
       , ""
       ] @ array_type_specs @ ["", "structure Opaque : sig"]
@@ -781,9 +782,13 @@ fun generate sig_name struct_name
          @
          fundef "unpauseProfiling" ["{cfg,ctx}"]
            [fficall "futhark_context_unpause_profiling"
-              [("ctx", "futhark_context")] "unit"]) @ array_type_defs
-      @ ["structure Opaque = struct"] @ map indent opaque_type_defs @ ["end"]
-      @ ["structure Entry = struct"] @ map indent entry_defs @ ["end"]
+              [("ctx", "futhark_context")] "unit"]
+         @
+         fundef "clearCaches" ["{cfg,ctx}"]
+           [fficall "futhark_context_clear_caches" [("ctx", "futhark_context")]
+              "unit"]) @ array_type_defs @ ["structure Opaque = struct"]
+      @ map indent opaque_type_defs @ ["end"] @ ["structure Entry = struct"]
+      @ map indent entry_defs @ ["end"]
   in
     ( unlines
         (header @ array_signature (!array_mode) @ [""] @ opaque_signature @ [""]

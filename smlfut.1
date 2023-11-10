@@ -180,8 +180,9 @@ structure Context : sig
   val free : ctx -> unit
   val sync : ctx -> unit
   val report : ctx -> string
-  val pauseProfiling : ctx -> bool
-  val unpauseProfiling : ctx -> bool
+  val pauseProfiling : ctx -> unit
+  val unpauseProfiling : ctx -> unit
+  val clearCaches : ctx -> unit
 end
 .Ed
 .
@@ -217,6 +218,10 @@ Temporarily suspend the collection of profiling information. Has no
 Resume the collection of profiling information. Has no effect if
 profiling was not enabled in the configuration, or if profiling is not
 currently paused.
+.It Li clearCaches
+Release any context-internal caches and buffers that may otherwise use
+computer resources. Will not invalidate any values or ongoing
+computation.
 .El
 .
 .Sh The Entry Structure
