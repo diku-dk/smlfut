@@ -2,7 +2,7 @@
 
 All user-visible changes are noted here.
 
-## Next
+## [1.1.0]
 
 * Added new `Context` functions: `clearCaches`, `report`,
   `pauseProfiling`, `unpauseProfiling`.
