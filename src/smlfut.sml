@@ -693,19 +693,33 @@ fun generate sig_name struct_name
                      "futhark_context_config"
                  )
                , ( "setTuningParam"
-                 , ("fn (v,x) => " ^ "if "
+                 , ("fn (v,x) => "
                     ^
-                    fficall "futhark_context_config"
-                      [ ("c_cfg", "futhark_context_config")
-                      , ("v", "string")
-                      , ("Int64.fromInt x", "int")
-                      ] "int" ^ " <> 0 then raise "
-                    ^
-                    parens
-                      (fficall "futhark_context_config_free"
-                         [("c_cfg", "futhark_context_config")] "unit"
-                       ^ "; raise Error (\"Unknown tuning parameter: \" ^ v")
-                    ^ ") else ()")
+                    unwords
+                      (letbind
+                         [ ( "v'"
+                           , fficall "mk_cstring"
+                               [ ("v", "string")
+                               , ("Int64.fromInt (size v)", "Int64.int")
+                               ] pointer
+                           )
+                         , ( "e"
+                           , fficall "futhark_context_config_set_tuning_param"
+                               [ ("c_cfg", "futhark_context_config")
+                               , ("v'", pointer)
+                               , ("Int64.fromInt x", "Int64.int")
+                               ] "int"
+                           )
+                         , ("()", fficall "free" [("v'", pointer)] "unit")
+                         ]
+                         ["if " ^ "e <> 0 then"
+                          ^
+                          parens
+                            (fficall "futhark_context_config_free"
+                               [("c_cfg", "futhark_context_config")] "unit"
+                             ^
+                             "; raise Error (\"Unknown tuning parameter: \" ^ v")
+                          ^ ") else ()"]))
                  )
                , ( "()"
                  , fficall "futhark_context_config_set_debugging"
@@ -802,7 +816,18 @@ fun generate sig_name struct_name
         ([ "#include <stdint.h>"
          , "#include <stddef.h>"
          , "#include <stdbool.h>"
+         , "#include <stdlib.h>"
+         , "#include <string.h>"
          , "int futhark_context_sync(void*);"
+         (* This next function is to create a guaranteed
+         NUL-terminated C string, which mlton does not othewise guarantee. *)
+         , "void* mk_cstring (const char* s, int64_t n);"
+         , "void* mk_cstring (const char* s, int64_t n) {"
+         , "  char *out = malloc((size_t)n + 1);"
+         , "  out[n] = 0;"
+         , "  strncpy(out, s, (size_t)n);"
+         , "  return out;"
+         , "}"
          ] @ cfuns)
     )
   end

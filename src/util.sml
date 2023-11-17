@@ -1,4 +1,5 @@
 val unlines = concat o map (fn s => s ^ "\n")
+val unwords = concat o map (fn s => s ^ " ")
 
 fun parens s = "(" ^ s ^ ")"
 fun braces s = "{" ^ s ^ "}"
