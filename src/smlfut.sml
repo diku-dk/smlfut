@@ -495,6 +495,8 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
         [ "int " ^ #values (#ops array) ^ "(void *ctx, void* arr, " ^ cet
           ^ " *data);"
         , "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
+          ^ " *data, int64_t offset);"
+        , "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
           ^ " *data, int64_t offset) {"
         , "  int ret = " ^ #values (#ops array) ^ "(ctx, arr, data+offset);"
         , "  if (ret == 0) { return futhark_context_sync(ctx); }"
@@ -503,6 +505,8 @@ fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
         , "void* " ^ #new (#ops array) ^ "(void *ctx, " ^ cet ^ " *data, "
           ^ dim_params ^ ");"
         , "void* " ^ #free (#ops array) ^ "(void *ctx, void* arr);"
+        , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet
+          ^ " *data, int64_t i," ^ dim_params ^ ");"
         , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet
           ^ " *data, int64_t i," ^ dim_params ^ ") {"
         , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data+i, "
