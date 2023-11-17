@@ -740,11 +740,23 @@ fun generate sig_name struct_name
                      ] "unit"
                  )
                , ( "()"
-                 , "case #cache cfg of SOME f => "
-                   ^
-                   fficall "futhark_context_config_set_cache_file"
-                     [("c_cfg", "futhark_context_config"), ("f", "string")]
-                     "unit" ^ " | NONE => ()"
+                 , unwords
+                     (["case #cache cfg of", "NONE => ()", "| SOME f =>"]
+                      @
+                      letbind
+                        [ ( "f'"
+                          , fficall "mk_cstring"
+                              [ ("f", "string")
+                              , ("Int64.fromInt (size f)", "Int64.int")
+                              ] pointer
+                          )
+                        , ( "()"
+                          , fficall "futhark_context_config_set_cache_file"
+                              [ ("c_cfg", "futhark_context_config")
+                              , ("f", "string")
+                              ] "unit"
+                          )
+                        ] [fficall "free" [("f'", pointer)] "unit"])
                  )
                , ("()", "List.app setTuningParam (#tuning cfg)")
                ]

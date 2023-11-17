@@ -24,10 +24,10 @@ test_mono/test.sml: test/test.json smlfut
 	$(MLTON) $(MLTONFLAGS) $*/test.mlb test/test.c $*/test.smlfut.c
 
 run_test_poly: test_poly/test
-	test_poly/test
+	cd test_poly && ./test
 
 run_test_mono: test_mono/test
-	test_mono/test
+	cd test_mono && ./test
 
 run_test: run_test_poly run_test_mono
 
