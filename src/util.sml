@@ -39,10 +39,13 @@ fun record_t fs =
   braces (punctuate ", " (map (fn (f, t) => f ^ ":" ^ t) fs))
 
 fun stringlit s =
-    let fun escape #"\n" = "\\n"
-          | escape #"\"" = "\\\""
-          | escape c = str c
-    in "\"" ^ String.translate escape s ^ "\"" end
+  let
+    fun escape #"\n" = "\\n"
+      | escape #"\"" = "\\\""
+      | escape c = str c
+  in
+    "\"" ^ String.translate escape s ^ "\""
+  end
 
 fun fundef fname args body =
   ["fun " ^ fname ^ " " ^ punctuate " " args ^ " ="] @ map indent body
@@ -63,7 +66,8 @@ fun datatypedef tname args def =
   "datatype " ^ tapply tname args ^ " = " ^ def
 
 fun letbind binds body =
-  ["let"] @ map (fn (p,e) => "val " ^ p ^ " = " ^ e) binds @ ["in"] @ body @ ["end"]
+  ["let"] @ map (fn (p, e) => "val " ^ p ^ " = " ^ e) binds @ ["in"] @ body
+  @ ["end"]
 
 fun sigexp specs =
   ["sig"] @ map indent specs @ ["end"]
