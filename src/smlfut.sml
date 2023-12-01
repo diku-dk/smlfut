@@ -136,14 +136,14 @@ fun newSyncFunction (array: array_info) =
   "futhark_new_sync_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array) ^ "d"
 
 
-signature BACKEND =
+signature TARGET =
 sig
   val futharkArraySig: string list
   val futharkArrayStructSpec: array_info -> string list
   val futharkArrayStructDef: manifest -> array_info -> string list
 end
 
-functor Smlfut(B: BACKEND) =
+functor Smlfut(B: TARGET) =
 struct
 
   fun cElemType "i8" = "int8_t"
@@ -732,150 +732,147 @@ struct
     end
 end
 
+local
+  fun futharkArrayStructDefMLTon defs (data_t: string) manifest
+    (info as {ctype, rank, elemtype, ops}) =
+    let
+      val shape =
+        if rank = 1 then
+          ["Int64.fromInt shape"]
+        else
+          List.tabulate (rank, fn i =>
+            apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
+      val shape_args = map (fn x => (x, "Int64.int")) shape
+    in
+      structdef (futharkArrayStruct info) NONE
+        ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
+         , typedef "ctx" [] "ctx"
+         , typedef "shape" [] (shapeTypeOfRank rank)
+         ] @ defs
+         @
+         fundef "new"
+           ["{ctx,cfg}", "slice", parens ("shape: " ^ shapeTypeOfRank rank)]
+           (letbind
+              [ ("(arr,i,n)", "Slice.base slice")
+              , ("()", "if " ^ mkProd shape ^ " <> n then raise Size else ()")
+              , ( "arr"
+                , fficall (newSyncFunction info)
+                    ([ ("ctx", "futhark_context")
+                     , ("arr", data_t)
+                     , ("Int64.fromInt i", "Int64.int")
+                     ] @ shape_args) pointer
+                )
+              ]
+              [ "if arr = " ^ null
+              , "then raise Error (get_error ctx)"
+              , "else (ctx, arr)"
+              ])
+         @
+         fundef "free" ["(ctx,data)"]
+           [apply "error_check"
+              [ (fficall (#free ops)
+                   ([("ctx", "futhark_context"), ("data", pointer)]) "int")
+              , "ctx"
+              ]] @ fundef "shape" ["(ctx,data)"] (mkShape info "data")
+         @
+         fundef "values_into" ["(ctx, data)", "slice"]
+           (letbind
+              [ ("(arr, i, n)", "Slice.base slice")
+              , ("m", unlines (mkSize info "data"))
+              , ("()", "if n <> m then raise Size else ()")
+              , ( "()"
+                , apply "error_check"
+                    [ fficall (valuesIntoFunction info)
+                        [ ("ctx", "futhark_context")
+                        , ("data", pointer)
+                        , ("arr", data_t)
+                        , (apply "Int64.fromInt" ["i"], "Int64.int")
+                        ] "int"
+                    , "ctx"
+                    ]
+                )
+              ] ["()"])
+         @
+         fundef "values" ["(ctx, data)"]
+           (letbind
+              [ ("n", unlines (mkSize info "data"))
+              , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
+              , ("()", "values_into (ctx, data) (Slice.full out)")
+              ] ["out"]))
+    end
+in
+  structure MLTonMono =
+    Smlfut
+      (struct
+         val futharkArraySig =
+           [ "signature FUTHARK_MONO_ARRAY ="
+           , "sig"
+           , "  type array"
+           , "  type ctx"
+           , "  type shape"
+           , "  structure Array : MONO_ARRAY"
+           , "  structure Slice : MONO_ARRAY_SLICE"
+           , "  val new: ctx -> Slice.slice -> shape -> array"
+           , "  val free: array -> unit"
+           , "  val shape: array -> shape"
+           , "  val values: array -> Array.array"
+           , "  val values_into: array -> Slice.slice -> unit"
+           , "end"
+           ]
+         fun smlArrayType (info: array_info) =
+           primTypeToSML (#elemtype info) ^ " Array.array"
+         fun smlArrayType info = monoArrayModule info ^ ".array"
+         fun futharkArrayStructSpec (info: array_info) =
+           [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
+           , "where type ctx = ctx"
+           , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+           , "  and type Array.array = " ^ monoArrayModule info ^ ".array"
+           , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
+           , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
+           , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
+           ]
+         fun futharkArrayStructDef manifest info =
+           futharkArrayStructDefMLTon
+             [ "structure Array = " ^ monoArrayModule info
+             , "structure Slice = " ^ smlArraySliceModule info
+             ] (smlArrayType info) manifest info
+       end)
+
+  structure MLTonPoly =
+    Smlfut
+      (struct
+         val futharkArraySig =
+           [ "signature FUTHARK_POLY_ARRAY ="
+           , "sig"
+           , "  type array"
+           , "  type ctx"
+           , "  type shape"
+           , "  type elem"
+           , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
+           , "  val free: array -> unit"
+           , "  val shape: array -> shape"
+           , "  val values: array -> elem Array.array"
+           , "  val values_into: array -> elem ArraySlice.slice -> unit"
+           , "end"
+           ]
+         fun futharkArrayStructSpec (info: array_info) =
+           [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
+           , "where type ctx = ctx"
+           , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+           , "  and type elem = " ^ primTypeToSML (#elemtype info)
+           ]
+         fun smlArrayType (info: array_info) =
+           primTypeToSML (#elemtype info) ^ " Array.array"
+         fun futharkArrayStructDef manifest info =
+           futharkArrayStructDefMLTon
+             [ "structure Array = Array"
+             , "structure Slice = ArraySlice"
+             , "type elem = " ^ primTypeToSML (#elemtype info)
+             ] (smlArrayType info) manifest info
+       end)
+end
 
 datatype array_mode = MONO_ARRAYS | POLY_ARRAYS
-
-fun futharkArrayStructDefGen array_mode (data_t: string) manifest
-  (info as {ctype, rank, elemtype, ops}) =
-  let
-    val shape =
-      if rank = 1 then
-        ["Int64.fromInt shape"]
-      else
-        List.tabulate (rank, fn i =>
-          apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
-    val shape_args = map (fn x => (x, "Int64.int")) shape
-  in
-    structdef (futharkArrayStruct info) NONE
-      ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
-       , typedef "ctx" [] "ctx"
-       , typedef "shape" [] (shapeTypeOfRank rank)
-       ]
-       @
-       (case array_mode of
-          MONO_ARRAYS =>
-            [ "structure Array = " ^ monoArrayModule info
-            , "structure Slice = " ^ smlArraySliceModule info
-            ]
-        | POLY_ARRAYS =>
-            [ "structure Array = Array"
-            , "structure Slice = ArraySlice"
-            , "type elem = " ^ primTypeToSML elemtype
-            ])
-       @
-       fundef "new"
-         ["{ctx,cfg}", "slice", parens ("shape: " ^ shapeTypeOfRank rank)]
-         (letbind
-            [ ("(arr,i,n)", "Slice.base slice")
-            , ("()", "if " ^ mkProd shape ^ " <> n then raise Size else ()")
-            , ( "arr"
-              , fficall (newSyncFunction info)
-                  ([ ("ctx", "futhark_context")
-                   , ("arr", data_t)
-                   , ("Int64.fromInt i", "Int64.int")
-                   ] @ shape_args) pointer
-              )
-            ]
-            [ "if arr = " ^ null
-            , "then raise Error (get_error ctx)"
-            , "else (ctx, arr)"
-            ])
-       @
-       fundef "free" ["(ctx,data)"]
-         [apply "error_check"
-            [ (fficall (#free ops)
-                 ([("ctx", "futhark_context"), ("data", pointer)]) "int")
-            , "ctx"
-            ]] @ fundef "shape" ["(ctx,data)"] (mkShape info "data")
-       @
-       fundef "values_into" ["(ctx, data)", "slice"]
-         (letbind
-            [ ("(arr, i, n)", "Slice.base slice")
-            , ("m", unlines (mkSize info "data"))
-            , ("()", "if n <> m then raise Size else ()")
-            , ( "()"
-              , apply "error_check"
-                  [ fficall (valuesIntoFunction info)
-                      [ ("ctx", "futhark_context")
-                      , ("data", pointer)
-                      , ("arr", data_t)
-                      , (apply "Int64.fromInt" ["i"], "Int64.int")
-                      ] "int"
-                  , "ctx"
-                  ]
-              )
-            ] ["()"])
-       @
-       fundef "values" ["(ctx, data)"]
-         (letbind
-            [ ("n", unlines (mkSize info "data"))
-            , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
-            , ("()", "values_into (ctx, data) (Slice.full out)")
-            ] ["out"]))
-  end
-
-structure MLTonMono =
-  Smlfut
-    (struct
-       val futharkArraySig =
-         [ "signature FUTHARK_MONO_ARRAY ="
-         , "sig"
-         , "  type array"
-         , "  type ctx"
-         , "  type shape"
-         , "  structure Array : MONO_ARRAY"
-         , "  structure Slice : MONO_ARRAY_SLICE"
-         , "  val new: ctx -> Slice.slice -> shape -> array"
-         , "  val free: array -> unit"
-         , "  val shape: array -> shape"
-         , "  val values: array -> Array.array"
-         , "  val values_into: array -> Slice.slice -> unit"
-         , "end"
-         ]
-       fun smlArrayType (info: array_info) =
-         primTypeToSML (#elemtype info) ^ " Array.array"
-       fun smlArrayType info = monoArrayModule info ^ ".array"
-       fun futharkArrayStructSpec (info: array_info) =
-         [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
-         , "where type ctx = ctx"
-         , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-         , "  and type Array.array = " ^ monoArrayModule info ^ ".array"
-         , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
-         , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
-         , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
-         ]
-       fun futharkArrayStructDef manifest info =
-         futharkArrayStructDefGen MONO_ARRAYS (smlArrayType info) manifest info
-     end)
-
-structure MLTonPoly =
-  Smlfut
-    (struct
-       val futharkArraySig =
-         [ "signature FUTHARK_POLY_ARRAY ="
-         , "sig"
-         , "  type array"
-         , "  type ctx"
-         , "  type shape"
-         , "  type elem"
-         , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
-         , "  val free: array -> unit"
-         , "  val shape: array -> shape"
-         , "  val values: array -> elem Array.array"
-         , "  val values_into: array -> elem ArraySlice.slice -> unit"
-         , "end"
-         ]
-       fun futharkArrayStructSpec (info: array_info) =
-         [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
-         , "where type ctx = ctx"
-         , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-         , "  and type elem = " ^ primTypeToSML (#elemtype info)
-         ]
-       fun smlArrayType (info: array_info) =
-         primTypeToSML (#elemtype info) ^ " Array.array"
-       fun futharkArrayStructDef manifest info =
-         futharkArrayStructDefGen POLY_ARRAYS (smlArrayType info) manifest info
-     end)
 
 val signature_opt: string option ref = ref NONE
 val structure_opt: string option ref = ref NONE
