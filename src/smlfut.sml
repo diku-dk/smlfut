@@ -143,7 +143,7 @@ sig
   val futharkArrayStructDef: manifest -> array_info -> string list
 end
 
-functor MkBackend(B: BACKEND) =
+functor Smlfut(B: BACKEND) =
 struct
 
   fun cElemType "i8" = "int8_t"
@@ -815,7 +815,7 @@ fun futharkArrayStructDefGen array_mode (data_t: string) manifest
   end
 
 structure MLTonMono =
-  MkBackend
+  Smlfut
     (struct
        val futharkArraySig =
          [ "signature FUTHARK_MONO_ARRAY ="
@@ -849,7 +849,7 @@ structure MLTonMono =
      end)
 
 structure MLTonPoly =
-  MkBackend
+  Smlfut
     (struct
        val futharkArraySig =
          [ "signature FUTHARK_POLY_ARRAY ="
