@@ -1,19 +1,5 @@
 (* FFI stuff *)
 
-(* Invoke named C function with the provided (SML) arguments and return type *)
-fun fficall cfun args ret =
-  let
-    val (arg_es, arg_ts) = ListPair.unzip args
-  in
-    apply
-      (parens
-         ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> " ^ ret
-          ^ ";")) arg_es
-  end
-
-val pointer = "MLton.Pointer.t"
-val null = "MLton.Pointer.null"
-
 (* Actual logic. *)
 
 fun gpuBackend "opencl" = true
@@ -31,7 +17,6 @@ fun checkValidName s =
   if isValidName s then ()
   else raise Fail ("\"" ^ s ^ "\" is an invalid SML identifier.")
 
-
 fun mkSum [] = "0"
   | mkSum [x] = x
   | mkSum (x :: xs) = x ^ "+" ^ mkSum xs
@@ -40,38 +25,6 @@ fun mkSum [] = "0"
 fun mkProd [] = "1"
   | mkProd [x] = x
   | mkProd (x :: xs) = x ^ "*" ^ mkProd xs
-
-
-fun mkSize (info: array_info) v =
-  letbind
-    [( "shape_c"
-     , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-         pointer
-     )]
-    [(mkProd (List.tabulate (#rank info, fn i =>
-        apply "Int64.toInt"
-          [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])))]
-
-
-fun blankRef manifest t =
-  case lookupType manifest t of
-    SOME _ => null
-  | NONE =>
-      case t of
-        "i8" => "Int8.fromInt 0"
-      | "i16" => "Int16.fromInt 0"
-      | "i32" => "Int32.fromInt 0"
-      | "i64" => "Int64.fromInt 0"
-      | "u8" => "Word8.fromInt 0"
-      | "u16" => "Word16.fromInt 0"
-      | "u32" => "Word32.fromInt 0"
-      | "u64" => "Word64.fromInt 0"
-      | "f16" => "Real16.fromInt 0"
-      | "f32" => "Real32.fromInt 0"
-      | "f64" => "Real64.fromInt 0"
-      | "bool" => "false"
-      | _ => raise Fail ("blankRef: " ^ t)
-
 
 fun monoArrayModule (info: array_info) =
   case #elemtype info of
@@ -118,16 +71,6 @@ fun shapeTypeOfRank d =
 
 fun smlArraySliceModule info = monoArrayModule info ^ "Slice"
 
-fun mkShape (info: array_info) v =
-  letbind
-    [( "shape_c"
-     , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-         pointer
-     )]
-    [tuple_e (List.tabulate (#rank info, fn i =>
-       apply "Int64.toInt"
-         [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
-
 fun valuesIntoFunction (array: array_info) =
   "futhark_values_into_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array)
   ^ "d"
@@ -136,15 +79,41 @@ fun newSyncFunction (array: array_info) =
   "futhark_new_sync_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array) ^ "d"
 
 
+fun blankRef null manifest t =
+  case lookupType manifest t of
+    SOME _ => null
+  | NONE =>
+      case t of
+        "i8" => "Int8.fromInt 0"
+      | "i16" => "Int16.fromInt 0"
+      | "i32" => "Int32.fromInt 0"
+      | "i64" => "Int64.fromInt 0"
+      | "u8" => "Word8.fromInt 0"
+      | "u16" => "Word16.fromInt 0"
+      | "u32" => "Word32.fromInt 0"
+      | "u64" => "Word64.fromInt 0"
+      | "f16" => "Real16.fromInt 0"
+      | "f32" => "Real32.fromInt 0"
+      | "f64" => "Real64.fromInt 0"
+      | "bool" => "false"
+      | _ => raise Fail ("blankRef: " ^ t)
+
 signature TARGET =
 sig
+  val pointer: string
+  val null: string
   val futharkArraySig: string list
   val futharkArrayStructSpec: array_info -> string list
   val futharkArrayStructDef: manifest -> array_info -> string list
+
+  (* Invoke named C function with the provided (SML) arguments and return type *)
+  val fficall: string -> (string * string) list -> string -> string
 end
 
 functor Smlfut(B: TARGET) =
 struct
+
+  open B
 
   fun cElemType "i8" = "int8_t"
     | cElemType "i16" = "int16_t"
@@ -265,8 +234,9 @@ struct
             end
       fun outDecs i [] = []
         | outDecs i ({type_, unique = _} :: rest) =
-            ("out" ^ Int.toString i, "ref (" ^ blankRef manifest type_ ^ ")")
-            :: outDecs (i + 1) rest
+            ( "out" ^ Int.toString i
+            , "ref (" ^ blankRef null manifest type_ ^ ")"
+            ) :: outDecs (i + 1) rest
       fun outArgs i [] = []
         | outArgs i (out :: rest) =
             ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref")
@@ -302,7 +272,7 @@ struct
     ["(* " ^ name ^ " *)"]
 
   fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
-        origNameComment name @ B.futharkArrayStructSpec info
+        origNameComment name @ futharkArrayStructSpec info
     | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
         case #record info of
           NONE =>
@@ -327,7 +297,7 @@ struct
 
   fun generateTypeDef manifest
         (name, FUTHARK_ARRAY (info as {ctype, rank, elemtype, ops})) =
-        B.futharkArrayStructDef manifest info
+        futharkArrayStructDef manifest info
     | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
         let
           val more =
@@ -337,8 +307,8 @@ struct
                 let
                   fun getField (name, {project, type_}) =
                     ( name
-                    , "let val out = ref " ^ parens (blankRef manifest type_)
-                      ^ "in "
+                    , "let val out = ref "
+                      ^ parens (blankRef null manifest type_) ^ "in "
                       ^
                       apply "error_check"
                         [ fficall project
@@ -708,7 +678,7 @@ struct
         @ ["structure Entry = struct"] @ map indent entry_defs @ ["end"]
     in
       ( unlines
-          (header @ B.futharkArraySig @ [""] @ opaque_signature @ [""]
+          (header @ futharkArraySig @ [""] @ opaque_signature @ [""]
            @ record_signature @ [""] @ sigdef sig_name specs)
       , unlines (header @ structdef struct_name (SOME sig_name) defs)
       , unlines
@@ -732,8 +702,71 @@ struct
     end
 end
 
+val FUTHARK_POLY_ARRAY =
+  [ "signature FUTHARK_POLY_ARRAY ="
+  , "sig"
+  , "  type array"
+  , "  type ctx"
+  , "  type shape"
+  , "  type elem"
+  , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
+  , "  val free: array -> unit"
+  , "  val shape: array -> shape"
+  , "  val values: array -> elem Array.array"
+  , "  val values_into: array -> elem ArraySlice.slice -> unit"
+  , "end"
+  ]
+
+val FUTHARK_MONO_ARRAY =
+  [ "signature FUTHARK_MONO_ARRAY ="
+  , "sig"
+  , "  type array"
+  , "  type ctx"
+  , "  type shape"
+  , "  structure Array : MONO_ARRAY"
+  , "  structure Slice : MONO_ARRAY_SLICE"
+  , "  val new: ctx -> Slice.slice -> shape -> array"
+  , "  val free: array -> unit"
+  , "  val shape: array -> shape"
+  , "  val values: array -> Array.array"
+  , "  val values_into: array -> Slice.slice -> unit"
+  , "end"
+  ]
+
 local
-  fun futharkArrayStructDefMLTon defs (data_t: string) manifest
+
+  fun fficall cfun args ret =
+    let
+      val (arg_es, arg_ts) = ListPair.unzip args
+    in
+      apply
+        (parens
+           ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> " ^ ret
+            ^ ";")) arg_es
+    end
+
+  fun mkSize pointer (info: array_info) v =
+    letbind
+      [( "shape_c"
+       , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+           pointer
+       )]
+      [(mkProd (List.tabulate (#rank info, fn i =>
+          apply "Int64.toInt"
+            [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])))]
+
+
+  fun mkShape pointer (info: array_info) v =
+    letbind
+      [( "shape_c"
+       , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
+           pointer
+       )]
+      [tuple_e (List.tabulate (#rank info, fn i =>
+         apply "Int64.toInt"
+           [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
+
+  fun futharkArrayStructDefMLTon pointer null defs (data_t: string) manifest
     (info as {ctype, rank, elemtype, ops}) =
     let
       val shape =
@@ -773,12 +806,12 @@ local
               [ (fficall (#free ops)
                    ([("ctx", "futhark_context"), ("data", pointer)]) "int")
               , "ctx"
-              ]] @ fundef "shape" ["(ctx,data)"] (mkShape info "data")
+              ]] @ fundef "shape" ["(ctx,data)"] (mkShape pointer info "data")
          @
          fundef "values_into" ["(ctx, data)", "slice"]
            (letbind
               [ ("(arr, i, n)", "Slice.base slice")
-              , ("m", unlines (mkSize info "data"))
+              , ("m", unlines (mkSize pointer info "data"))
               , ("()", "if n <> m then raise Size else ()")
               , ( "()"
                 , apply "error_check"
@@ -795,8 +828,10 @@ local
          @
          fundef "values" ["(ctx, data)"]
            (letbind
-              [ ("n", unlines (mkSize info "data"))
-              , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
+              [ ("n", unlines (mkSize pointer info "data"))
+              , ( "out"
+                , apply ("Array.array") ["n", blankRef null manifest elemtype]
+                )
               , ("()", "values_into (ctx, data) (Slice.full out)")
               ] ["out"]))
     end
@@ -804,21 +839,10 @@ in
   structure MLTonMono =
     Smlfut
       (struct
-         val futharkArraySig =
-           [ "signature FUTHARK_MONO_ARRAY ="
-           , "sig"
-           , "  type array"
-           , "  type ctx"
-           , "  type shape"
-           , "  structure Array : MONO_ARRAY"
-           , "  structure Slice : MONO_ARRAY_SLICE"
-           , "  val new: ctx -> Slice.slice -> shape -> array"
-           , "  val free: array -> unit"
-           , "  val shape: array -> shape"
-           , "  val values: array -> Array.array"
-           , "  val values_into: array -> Slice.slice -> unit"
-           , "end"
-           ]
+         val pointer = "MLton.Pointer.t"
+         val null = "MLton.Pointer.null"
+         val fficall = fficall
+         val futharkArraySig = FUTHARK_MONO_ARRAY
          fun smlArrayType (info: array_info) =
            primTypeToSML (#elemtype info) ^ " Array.array"
          fun smlArrayType info = monoArrayModule info ^ ".array"
@@ -832,7 +856,7 @@ in
            , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
            ]
          fun futharkArrayStructDef manifest info =
-           futharkArrayStructDefMLTon
+           futharkArrayStructDefMLTon pointer null
              [ "structure Array = " ^ monoArrayModule info
              , "structure Slice = " ^ smlArraySliceModule info
              ] (smlArrayType info) manifest info
@@ -841,20 +865,10 @@ in
   structure MLTonPoly =
     Smlfut
       (struct
-         val futharkArraySig =
-           [ "signature FUTHARK_POLY_ARRAY ="
-           , "sig"
-           , "  type array"
-           , "  type ctx"
-           , "  type shape"
-           , "  type elem"
-           , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
-           , "  val free: array -> unit"
-           , "  val shape: array -> shape"
-           , "  val values: array -> elem Array.array"
-           , "  val values_into: array -> elem ArraySlice.slice -> unit"
-           , "end"
-           ]
+         val pointer = "MLton.Pointer.t"
+         val null = "MLton.Pointer.null"
+         val fficall = fficall
+         val futharkArraySig = FUTHARK_POLY_ARRAY
          fun futharkArrayStructSpec (info: array_info) =
            [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
            , "where type ctx = ctx"
@@ -864,7 +878,7 @@ in
          fun smlArrayType (info: array_info) =
            primTypeToSML (#elemtype info) ^ " Array.array"
          fun futharkArrayStructDef manifest info =
-           futharkArrayStructDefMLTon
+           futharkArrayStructDefMLTon pointer null
              [ "structure Array = Array"
              , "structure Slice = ArraySlice"
              , "type elem = " ^ primTypeToSML (#elemtype info)
