@@ -1,4 +1,54 @@
-(* FFI stuff *)
+(* Generated signatures. *)
+
+val sig_FUTHARK_POLY_ARRAY =
+  [ "signature FUTHARK_POLY_ARRAY ="
+  , "sig"
+  , "  type array"
+  , "  type ctx"
+  , "  type shape"
+  , "  type elem"
+  , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
+  , "  val free: array -> unit"
+  , "  val shape: array -> shape"
+  , "  val values: array -> elem Array.array"
+  , "  val values_into: array -> elem ArraySlice.slice -> unit"
+  , "end"
+  ]
+
+val sig_FUTHARK_MONO_ARRAY =
+  [ "signature FUTHARK_MONO_ARRAY ="
+  , "sig"
+  , "  type array"
+  , "  type ctx"
+  , "  type shape"
+  , "  structure Array : MONO_ARRAY"
+  , "  structure Slice : MONO_ARRAY_SLICE"
+  , "  val new: ctx -> Slice.slice -> shape -> array"
+  , "  val free: array -> unit"
+  , "  val shape: array -> shape"
+  , "  val values: array -> Array.array"
+  , "  val values_into: array -> Slice.slice -> unit"
+  , "end"
+  ]
+
+val sig_FUTHARK_OPAQUE =
+  [ "signature FUTHARK_OPAQUE ="
+  , "sig"
+  , "  type t"
+  , "  type ctx"
+  , "  val free : t -> unit"
+  , "end"
+  ]
+
+val sig_FUTHARK_RECORD =
+  [ "signature FUTHARK_RECORD ="
+  , "sig"
+  , "  include FUTHARK_OPAQUE"
+  , "  type record"
+  , "  val values : t -> record"
+  , "  val new : ctx -> record -> t"
+  , "end"
+  ]
 
 (* Actual logic. *)
 
@@ -102,7 +152,7 @@ signature TARGET =
 sig
   val pointer: string
   val null: string
-  val futharkArraySig: string list
+  val sig_FUTHARK_ARRAY: string list
   val futharkArrayStructSpec: array_info -> string list
   val futharkArrayStructDef: manifest -> array_info -> string list
 
@@ -380,25 +430,6 @@ struct
           ]
         end
 
-  val opaque_signature =
-    [ "signature FUTHARK_OPAQUE ="
-    , "sig"
-    , "  type t"
-    , "  type ctx"
-    , "  val free : t -> unit"
-    , "end"
-    ]
-
-  val record_signature =
-    [ "signature FUTHARK_RECORD ="
-    , "sig"
-    , "  include FUTHARK_OPAQUE"
-    , "  type record"
-    , "  val values : t -> record"
-    , "  val new : ctx -> record -> t"
-    , "end"
-    ]
-
   (* The manifest does not guarantee anything about the type ordering,
   but some types (specifically records) may refer to other types.  It is
   important that they are declared before they are used.  Fortunately
@@ -655,8 +686,8 @@ struct
         @ ["structure Entry = struct"] @ map indent entry_defs @ ["end"]
     in
       ( unlines
-          (header @ futharkArraySig @ [""] @ opaque_signature @ [""]
-           @ record_signature @ [""] @ sigdef sig_name specs)
+          (header @ sig_FUTHARK_ARRAY @ [""] @ sig_FUTHARK_OPAQUE @ [""]
+           @ sig_FUTHARK_RECORD @ [""] @ sigdef sig_name specs)
       , unlines (header @ structdef struct_name (SOME sig_name) defs)
       , unlines
           ([ "#include <stdint.h>"
@@ -669,37 +700,6 @@ struct
       )
     end
 end
-
-val FUTHARK_POLY_ARRAY =
-  [ "signature FUTHARK_POLY_ARRAY ="
-  , "sig"
-  , "  type array"
-  , "  type ctx"
-  , "  type shape"
-  , "  type elem"
-  , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
-  , "  val free: array -> unit"
-  , "  val shape: array -> shape"
-  , "  val values: array -> elem Array.array"
-  , "  val values_into: array -> elem ArraySlice.slice -> unit"
-  , "end"
-  ]
-
-val FUTHARK_MONO_ARRAY =
-  [ "signature FUTHARK_MONO_ARRAY ="
-  , "sig"
-  , "  type array"
-  , "  type ctx"
-  , "  type shape"
-  , "  structure Array : MONO_ARRAY"
-  , "  structure Slice : MONO_ARRAY_SLICE"
-  , "  val new: ctx -> Slice.slice -> shape -> array"
-  , "  val free: array -> unit"
-  , "  val shape: array -> shape"
-  , "  val values: array -> Array.array"
-  , "  val values_into: array -> Slice.slice -> unit"
-  , "end"
-  ]
 
 local
 
@@ -853,7 +853,7 @@ in
          val fficall = fficall
          val util_defs = strlen @ strcpy
          val cdefs = mk_cstring
-         val futharkArraySig = FUTHARK_MONO_ARRAY
+         val sig_FUTHARK_ARRAY = sig_FUTHARK_MONO_ARRAY
          fun smlArrayType (info: array_info) =
            primTypeToSML (#elemtype info) ^ " Array.array"
          fun smlArrayType info = monoArrayModule info ^ ".array"
@@ -881,7 +881,7 @@ in
          val fficall = fficall
          val util_defs = strlen @ strcpy
          val cdefs = mk_cstring
-         val futharkArraySig = FUTHARK_POLY_ARRAY
+         val sig_FUTHARK_ARRAY = sig_FUTHARK_POLY_ARRAY
          fun futharkArrayStructSpec (info: array_info) =
            [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
            , "where type ctx = ctx"
