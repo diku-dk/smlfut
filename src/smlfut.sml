@@ -111,6 +111,9 @@ sig
 
   (* Extra definitions added at the struct level. *)
   val util_defs: string list
+
+  (* Extra C definitions. *)
+  val cdefs: string list
 end
 
 functor Smlfut(B: TARGET) =
@@ -662,16 +665,7 @@ struct
            , "#include <stdlib.h>"
            , "#include <string.h>"
            , "int futhark_context_sync(void*);"
-           (* This next function is to create a guaranteed
-           NUL-terminated C string, which mlton does not othewise guarantee. *)
-           , "void* mk_cstring (const char* s, int64_t n);"
-           , "void* mk_cstring (const char* s, int64_t n) {"
-           , "  char *out = malloc((size_t)n + 1);"
-           , "  out[n] = 0;"
-           , "  strncpy(out, s, (size_t)n);"
-           , "  return out;"
-           , "}"
-           ] @ cfuns)
+           ] @ cdefs @ cfuns)
       )
     end
 end
@@ -738,6 +732,17 @@ local
     , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
     ]
 
+  val mk_cstring =
+    [ (* This next function is to create a guaranteed
+      NUL-terminated C string, which mlton does not othewise guarantee. *)
+      "void* mk_cstring (const char* s, int64_t n);"
+    , "void* mk_cstring (const char* s, int64_t n) {"
+    , "  char *out = malloc((size_t)n + 1);"
+    , "  out[n] = 0;"
+    , "  strncpy(out, s, (size_t)n);"
+    , "  return out;"
+    , "}"
+    ]
 
   fun fficall cfun args ret =
     let
@@ -847,6 +852,7 @@ in
          val null = "MLton.Pointer.null"
          val fficall = fficall
          val util_defs = strlen @ strcpy
+         val cdefs = mk_cstring
          val futharkArraySig = FUTHARK_MONO_ARRAY
          fun smlArrayType (info: array_info) =
            primTypeToSML (#elemtype info) ^ " Array.array"
@@ -874,6 +880,7 @@ in
          val null = "MLton.Pointer.null"
          val fficall = fficall
          val util_defs = strlen @ strcpy
+         val cdefs = mk_cstring
          val futharkArraySig = FUTHARK_POLY_ARRAY
          fun futharkArrayStructSpec (info: array_info) =
            [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
