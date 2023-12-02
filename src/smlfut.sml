@@ -108,6 +108,9 @@ sig
 
   (* Invoke named C function with the provided (SML) arguments and return type *)
   val fficall: string -> (string * string) list -> string -> string
+
+  (* Extra definitions added at the struct level. *)
+  val util_defs: string list
 end
 
 functor Smlfut(B: TARGET) =
@@ -176,35 +179,6 @@ struct
   fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
     valspec name ["ctx", tuple_t (map (typeToSML manifest o #type_) inputs)]
       (tuple_t (map (typeToSML manifest o #type_) outputs))
-
-  (* Extracting the Futhark error string is somewhat tricky, for two reasons:
-  
-  1) We have to convert it to an SML string.
-  
-  2) We are responsible for freeing the C string.
-  
-  Our solution is to allocate an SML string, copy the C string into it,
-  then free the C string.
-   *)
-
-  val strlen =
-    ["fun strlen (p: MLton.Pointer.t) ="]
-    @
-    map indent
-      [ "let"
-      , indent "fun loop i ="
-      , indent (indent
-          ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
-      , "in"
-      , indent "loop 0"
-      , "end"
-      ]
-
-  val strcpy =
-    [ "fun strcpy (p: MLton.Pointer.t) : string ="
-    , indent "CharVector.tabulate (strlen p, fn i =>"
-    , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
-    ]
 
   val error_check =
     fundef "get_error" ["ctx"]
@@ -524,7 +498,7 @@ struct
         @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
         @ map indent entry_specs @ ["end"]
       val defs =
-        strlen @ strcpy
+        util_defs
         @
         [ ""
         , valdef "backend" (stringlit backend)
@@ -735,6 +709,36 @@ val FUTHARK_MONO_ARRAY =
 
 local
 
+  (* Extracting the Futhark error string is somewhat tricky, for two reasons:
+  
+  1) We have to convert it to an SML string.
+  
+  2) We are responsible for freeing the C string.
+  
+  Our solution is to allocate an SML string, copy the C string into it,
+  then free the C string.
+   *)
+
+  val strlen =
+    ["fun strlen (p: MLton.Pointer.t) ="]
+    @
+    map indent
+      [ "let"
+      , indent "fun loop i ="
+      , indent (indent
+          ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
+      , "in"
+      , indent "loop 0"
+      , "end"
+      ]
+
+  val strcpy =
+    [ "fun strcpy (p: MLton.Pointer.t) : string ="
+    , indent "CharVector.tabulate (strlen p, fn i =>"
+    , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
+    ]
+
+
   fun fficall cfun args ret =
     let
       val (arg_es, arg_ts) = ListPair.unzip args
@@ -842,6 +846,7 @@ in
          val pointer = "MLton.Pointer.t"
          val null = "MLton.Pointer.null"
          val fficall = fficall
+         val util_defs = strlen @ strcpy
          val futharkArraySig = FUTHARK_MONO_ARRAY
          fun smlArrayType (info: array_info) =
            primTypeToSML (#elemtype info) ^ " Array.array"
@@ -868,6 +873,7 @@ in
          val pointer = "MLton.Pointer.t"
          val null = "MLton.Pointer.null"
          val fficall = fficall
+         val util_defs = strlen @ strcpy
          val futharkArraySig = FUTHARK_POLY_ARRAY
          fun futharkArrayStructSpec (info: array_info) =
            [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
