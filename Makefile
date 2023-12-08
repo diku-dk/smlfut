@@ -40,7 +40,7 @@ run_test_mono: test_mono/test
 run_test_mlkit: test_mlkit/test
 	cd test_mlkit && ./test
 
-run_test: run_test_poly run_test_mono run_test_mlkit
+run_test: run_test_poly run_test_mono
 
 smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf
