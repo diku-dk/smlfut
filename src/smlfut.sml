@@ -76,21 +76,27 @@ fun mkProd [] = "1"
   | mkProd [x] = x
   | mkProd (x :: xs) = x ^ "*" ^ mkProd xs
 
+fun monoArrayModuleForType t =
+  case t of
+    "i8" => SOME "Int8Array"
+  | "i16" => SOME "Int16Array"
+  | "i32" => SOME "Int32Array"
+  | "i64" => SOME "Int64Array"
+  | "u8" => SOME "Word8Array"
+  | "u16" => SOME "Word16Array"
+  | "u32" => SOME "Word32Array"
+  | "u64" => SOME "Word64Array"
+  | "bool" => SOME "BoolArray"
+  | "f16" => SOME "Real16Array"
+  | "f32" => SOME "Real32Array"
+  | "f64" => SOME "Real64Array"
+  | _ => NONE
+
+
 fun monoArrayModule (info: array_info) =
-  case #elemtype info of
-    "i8" => "Int8Array"
-  | "i16" => "Int16Array"
-  | "i32" => "Int32Array"
-  | "i64" => "Int64Array"
-  | "u8" => "Word8Array"
-  | "u16" => "Word16Array"
-  | "u32" => "Word32Array"
-  | "u64" => "Word64Array"
-  | "bool" => "BoolArray"
-  | "f16" => "Real16Array"
-  | "f32" => "Real32Array"
-  | "f64" => "Real64Array"
-  | _ =>
+  case monoArrayModuleForType (#elemtype info) of
+    SOME m => m
+  | NONE =>
       raise Fail
         ("Cannot represent SML array with element type: " ^ #elemtype info)
 
@@ -158,10 +164,6 @@ sig
 
   (* Invoke named C function with the provided (SML) arguments and return type *)
   val fficall: string -> (string * string) list -> string -> string
-
-  (* Extra definitions added at the struct level. *)
-  val util_defs: string list
-
 end
 
 functor Smlfut(B: TARGET) =
@@ -211,6 +213,23 @@ struct
       SOME t' => t'
     | NONE => pointer
 
+  fun mkOut null manifest t =
+    case monoArrayModuleForType t of
+      SOME m => apply (m ^ ".array") ["1", blankRef null manifest t]
+    | NONE => apply "Word64Array.array" ["1", "0w0"]
+
+  fun outType t =
+    case monoArrayModuleForType t of
+      SOME m => m ^ ".array"
+    | NONE => "Word64Array.array"
+
+  fun fetchOut v t =
+    case monoArrayModuleForType t of
+      SOME m => apply (m ^ ".sub") [v, "0"]
+    | NONE =>
+        fficall "smlfut_to_pointer"
+          [(apply "Word64Array.sub" [v, "0"], "Word64.word")] pointer
+
   fun typeToSML manifest t =
     case lookupType manifest t of
       SOME t' => futharkTypeToSML t t'
@@ -259,12 +278,11 @@ struct
             end
       fun outDecs i [] = []
         | outDecs i ({type_, unique = _} :: rest) =
-            ( "out" ^ Int.toString i
-            , "ref (" ^ blankRef null manifest type_ ^ ")"
-            ) :: outDecs (i + 1) rest
+            ("out" ^ Int.toString i, mkOut null manifest type_)
+            :: outDecs (i + 1) rest
       fun outArgs i [] = []
         | outArgs i (out :: rest) =
-            ("out" ^ Int.toString i, apiType (#type_ out) ^ " ref")
+            ("out" ^ Int.toString i, outType (#type_ out))
             :: outArgs (i + 1) rest
       fun inpArgs i [] = []
         | inpArgs i (inp :: rest) =
@@ -274,10 +292,11 @@ struct
         | outRes i (out :: rest) =
             let
               val v = "out" ^ Int.toString i
+              val fetch = fetchOut v (#type_ out)
             in
               (case lookupType manifest (#type_ out) of
-                 SOME _ => tuple_e ["ctx", "!" ^ v]
-               | _ => "!" ^ v) :: outRes (i + 1) rest
+                 SOME _ => tuple_e ["ctx", fetch]
+               | _ => fetch) :: outRes (i + 1) rest
             end
     in
       fundef name (["{cfg,ctx}", tuple_e (inpParams 0 inputs)])
@@ -332,21 +351,20 @@ struct
                 let
                   fun getField (name, {project, type_}) =
                     ( name
-                    , "let val out = ref "
-                      ^ parens (blankRef null manifest type_) ^ "in "
+                    , "let val out = " ^ mkOut null manifest type_ ^ "in "
                       ^
                       apply "error_check"
                         [ fficall project
                             [ ("ctx", "futhark_context")
-                            , ("out", apiType type_ ^ " ref")
+                            , ("out", outType type_)
                             , ("data", pointer)
                             ] "int"
                         , "ctx"
                         ] ^ "; "
                       ^
                       (case lookupType manifest type_ of
-                         SOME _ => tuple_e ["ctx", "!out"]
-                       | _ => "!out") ^ " end"
+                         SOME _ => tuple_e ["ctx", fetchOut "out" type_]
+                       | _ => fetchOut "out" type_) ^ " end"
                     )
                   fun fieldParam (name, {project, type_}) =
                     ( name
@@ -366,15 +384,21 @@ struct
                   @
                   fundef "new"
                     ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
-                    (letbind [("out", "ref " ^ null)]
+                    (letbind [("out", apply "Word64Array.array" ["1", "0w0"])]
                        [ apply "error_check"
                            [ (fficall (#new record)
                                 ([ ("ctx", "futhark_context")
-                                 , ("out", pointer ^ " ref")
+                                 , ("out", "Word64Array.array")
                                  ] @ map fieldArg (#fields record)) "int")
                            , "ctx"
                            ] ^ ";"
-                       , "(ctx,!out)"
+                       , tuple_e
+                           [ "ctx"
+                           , fficall "smlfut_to_pointer"
+                               [( apply "Word64Array.sub" ["out", "0"]
+                                , "Word64.word"
+                                )] pointer
+                           ]
                        ])
                 end
         in
@@ -530,8 +554,6 @@ struct
         @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
         @ map indent entry_specs @ ["end"]
       val defs =
-        [typedef "ptr" [] pointer] @ util_defs
-        @
         [ ""
         , valdef "backend" (stringlit backend)
         , valdef "version" (stringlit version)
@@ -541,7 +563,17 @@ struct
         , cfg_type
         , typedef "futhark_context_config" [] pointer
         , typedef "futhark_context" [] pointer
-        ] @ error_check
+        ] @ [valdef "NULL" (fficall "mknull" [] pointer)]
+        @
+        fundef "strcpy" ["p"]
+          (letbind
+             [ ("n", fficall "smlfut_strlen" [("p", pointer)] "Int64.int")
+             , ("s", "CharVector.tabulate (Int64.toInt n, fn i => chr 0)")
+             , ( "_"
+               , fficall "smlfut_memcpy"
+                   [("s", "string"), ("p", pointer), ("n", "Int64.int")] pointer
+               )
+             ] ["s"]) @ error_check
         @
         structdef "Config" NONE
           (valdef "default" cfg_default
@@ -708,6 +740,14 @@ struct
            , "void* smlfut_memcpy(void* d, const void* s, int64_t n) {"
            , "  return memcpy(d, s, n);"
            , "}"
+           , ""
+           , "int64_t smlfut_strlen(const char *s) {"
+           , "  return strlen(s);"
+           , "}"
+           , ""
+           , "void* smlfut_to_pointer(uint64_t x) {"
+           , "  return (void*)(uintptr_t)x;"
+           , "}"
            ] @ cfuns)
       )
     end
@@ -757,7 +797,7 @@ local
         , fficall "smlfut_memcpy"
             [ ("shape_ml", "Int64Array.array")
             , ("shape_c", pointer)
-            , ("r*8", "Int64.int")
+            , (apply "Int64.fromInt" ["r*8"], "Int64.int")
             ] pointer
         )
       ]
@@ -778,7 +818,7 @@ local
         , fficall "smlfut_memcpy"
             [ ("shape_ml", "Int64Array.array")
             , ("shape_c", pointer)
-            , ("r*8", "Int64.int")
+            , (apply "Int64.fromInt" ["r*8"], "Int64.int")
             ] pointer
         )
       ]
@@ -883,24 +923,6 @@ local
              ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> "
               ^ ret ^ ";")) arg_es
       end
-
-    val util_defs =
-      ["fun strlen (p: MLton.Pointer.t) ="]
-      @
-      map indent
-        [ "let"
-        , indent "fun loop i ="
-        , indent (indent
-            ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
-        , "in"
-        , indent "loop 0"
-        , "end"
-        ]
-      @
-      [ "fun strcpy (p: MLton.Pointer.t) : string ="
-      , indent "CharVector.tabulate (strlen p, fn i =>"
-      , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
-      ]
   end
 
   val fficall = MLtonDefs.fficall
@@ -948,23 +970,7 @@ structure MLKit =
              ^ tuple_e (map (fn (x, t) => parens (x ^ " : " ^ t)) args)) ^ " : "
           ^ ret)
 
-       val util_defs =
-         [valdef "NULL" "prim (\"@mknull\", ()) : foreignptr"]
-         @
-         fundef "strlen" ["(p: foreignptr)"]
-           ["prim (\"@strlen\", (p)) : Int64.int"]
-         @
-         fundef "strcpy" ["(p: foreignptr)"]
-           (letbind
-              [ ("n", "strlen p")
-              , ("s", "CharVector.tabulate (Int64.toInt n, fn i => chr 0)")
-              , ( "_"
-                , fficall "smlfut_memcpy"
-                    [("s", "string"), ("p", pointer), ("n", "Int64.int")]
-                    pointer
-                )
-              ] ["s"])
-
+       val util_defs = []
        val futharkArrayStructDef = fn manifest =>
          fn info =>
            futharkArrayStructDef fficall pointer null
