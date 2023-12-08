@@ -23,10 +23,10 @@ test_mono/test.sml: test/test.json smlfut
 test_mlkit/test.sml: test/test.json smlfut
 	./smlfut --target=mlkit test/test.json -o test_mlkit
 
-test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml test_mlkit/test.smlfut.c
+test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml
 	cd test_mlkit && gcc -c ../test/test.c test.smlfut.c
 	cd test_mlkit && ar r libtest.a test.o test.smlfut.o
-	$(MLKIT) -o test_mlkit/test -libdirs test_mlkit -libs "m,c,dl,test" test_mlkit/test.mlb
+	$(MLKIT) -o test_mlkit/test -libdirs test_mlkit -libs "m,c,dl,test" -no_gc test_mlkit/test.mlb
 
 %/test: test/test.json %/test_main.sml %/test.sml
 	$(MLTON) $(MLTONFLAGS) $*/test.mlb test/test.c $*/test.smlfut.c
@@ -40,7 +40,7 @@ run_test_mono: test_mono/test
 run_test_mlkit: test_mlkit/test
 	cd test_mlkit && ./test
 
-run_test: run_test_poly run_test_mono
+run_test: run_test_poly run_test_mono run_test_mlkit
 
 smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf

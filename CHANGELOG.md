@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## [1.2.0]
+
+* MLKit is now supported.
+
 ## [1.1.0]
 
 * Added new `Context` functions: `clearCaches`, `report`,

@@ -135,9 +135,9 @@ fun newSyncFunction (array: array_info) =
   "futhark_new_sync_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array) ^ "d"
 
 
-fun blankRef null manifest t =
+fun blankRef manifest t =
   case lookupType manifest t of
-    SOME _ => null
+    SOME _ => "NULL"
   | NONE =>
       case t of
         "i8" => "Int8.fromInt 0"
@@ -157,7 +157,6 @@ fun blankRef null manifest t =
 signature TARGET =
 sig
   val pointer: string
-  val null: string
   val sig_FUTHARK_ARRAY: string list
   val futharkArrayStructSpec: array_info -> string list
   val futharkArrayStructDef: manifest -> array_info -> string list
@@ -213,9 +212,9 @@ struct
       SOME t' => t'
     | NONE => pointer
 
-  fun mkOut null manifest t =
+  fun mkOut manifest t =
     case monoArrayModuleForType t of
-      SOME m => apply (m ^ ".array") ["1", blankRef null manifest t]
+      SOME m => apply (m ^ ".array") ["1", blankRef manifest t]
     | NONE => apply "Word64Array.array" ["1", "0w0"]
 
   fun outType t =
@@ -278,7 +277,7 @@ struct
             end
       fun outDecs i [] = []
         | outDecs i ({type_, unique = _} :: rest) =
-            ("out" ^ Int.toString i, mkOut null manifest type_)
+            ("out" ^ Int.toString i, mkOut manifest type_)
             :: outDecs (i + 1) rest
       fun outArgs i [] = []
         | outArgs i (out :: rest) =
@@ -351,7 +350,7 @@ struct
                 let
                   fun getField (name, {project, type_}) =
                     ( name
-                    , "let val out = " ^ mkOut null manifest type_ ^ "in "
+                    , "let val out = " ^ mkOut manifest type_ ^ "in "
                       ^
                       apply "error_check"
                         [ fficall project
@@ -565,6 +564,10 @@ struct
         , typedef "futhark_context" [] pointer
         ] @ [valdef "NULL" (fficall "mknull" [] pointer)]
         @
+        fundef "isnull" ["p"]
+          ["if " ^ parens (fficall "smlfut_isnull" [("p", pointer)] "int")
+           ^ " = 0 then false else true"]
+        @
         fundef "strcpy" ["p"]
           (letbind
              [ ("n", fficall "smlfut_strlen" [("p", pointer)] "Int64.int")
@@ -729,6 +732,7 @@ struct
            , "int futhark_context_sync(void*);"
            , ""
            , "uintptr_t mknull(void) { return (uintptr_t)NULL; }"
+           , "int smlfut_isnull(void* p) { return p == NULL; }"
            , ""
            , "void* mk_cstring (const char* s, int64_t n) {"
            , "  char *out = malloc((size_t)n + 1);"
@@ -857,7 +861,7 @@ in
                      ] @ shape_args) pointer
                 )
               ]
-              [ "if arr = " ^ null
+              [ "if isnull arr"
               , "then raise Error (get_error ctx)"
               , "else (ctx, arr)"
               ])
@@ -891,9 +895,7 @@ in
          fundef "values" ["(ctx, data)"]
            (letbind
               [ ("n", unlines (mkSize fficall pointer info "data"))
-              , ( "out"
-                , apply ("Array.array") ["n", blankRef null manifest elemtype]
-                )
+              , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
               , ("()", "values_into (ctx, data) (Slice.full out)")
               ] ["out"]))
     end
@@ -912,7 +914,6 @@ local
   structure MLtonDefs =
   struct
     val pointer = "MLton.Pointer.t"
-    val null = "MLton.Pointer.null"
 
     fun fficall cfun args ret =
       let
@@ -960,15 +961,15 @@ structure MLKit =
     (struct
        open MonoDefs
        val pointer = "foreignptr"
-       val null = "NULL"
        (* Note that we always do auto-conversion here. *)
        fun fficall cfun args ret =
-         ("prim "
-          ^
-          parens
-            ("\"@" ^ cfun ^ "\", "
-             ^ tuple_e (map (fn (x, t) => parens (x ^ " : " ^ t)) args)) ^ " : "
-          ^ ret)
+         parens
+           ("prim "
+            ^
+            parens
+              ("\"@" ^ cfun ^ "\", "
+               ^ tuple_e (map (fn (x, t) => parens (x ^ " : " ^ t)) args))
+            ^ " : " ^ ret)
 
        val util_defs = []
        val futharkArrayStructDef = fn manifest =>
