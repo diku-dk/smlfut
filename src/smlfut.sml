@@ -162,8 +162,6 @@ sig
   (* Extra definitions added at the struct level. *)
   val util_defs: string list
 
-  (* Extra C definitions. *)
-  val cdefs: string list
 end
 
 functor Smlfut(B: TARGET) =
@@ -532,7 +530,7 @@ struct
         @ map indent opaque_type_specs @ ["end", "", "structure Entry : sig"]
         @ map indent entry_specs @ ["end"]
       val defs =
-        util_defs
+        [typedef "ptr" [] pointer] @ util_defs
         @
         [ ""
         , valdef "backend" (stringlit backend)
@@ -695,96 +693,111 @@ struct
            , "#include <stdbool.h>"
            , "#include <stdlib.h>"
            , "#include <string.h>"
+           , "#include <stdio.h>"
            , "int futhark_context_sync(void*);"
-           ] @ cdefs @ cfuns)
+           , ""
+           , "uintptr_t mknull(void) { return (uintptr_t)NULL; }"
+           , ""
+           , "void* mk_cstring (const char* s, int64_t n);"
+           , "void* mk_cstring (const char* s, int64_t n) {"
+           , "  char *out = malloc((size_t)n + 1);"
+           , "  out[n] = 0;"
+           , "  strncpy(out, s, (size_t)n);"
+           , "  return out;"
+           , "}"
+           , ""
+           , "void* smlfut_memcpy(void* d, const void* s, int64_t n) {"
+           , "  return memcpy(d, s, n);"
+           , "}"
+           ] @ cfuns)
       )
     end
 end
 
+structure MonoDefs =
+struct
+  val sig_FUTHARK_ARRAY = sig_FUTHARK_MONO_ARRAY
+  fun smlArrayType (info: array_info) =
+    primTypeToSML (#elemtype info) ^ " Array.array"
+  fun smlArrayType info = monoArrayModule info ^ ".array"
+  fun futharkArrayStructSpec (info: array_info) =
+    [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
+    , "where type ctx = ctx"
+    , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+    , "  and type Array.array = " ^ monoArrayModule info ^ ".array"
+    , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
+    , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
+    , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
+    ]
+end
+
+structure PolyDefs =
+struct
+  val sig_FUTHARK_ARRAY = sig_FUTHARK_POLY_ARRAY
+  fun futharkArrayStructSpec (info: array_info) =
+    [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
+    , "where type ctx = ctx"
+    , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+    , "  and type elem = " ^ primTypeToSML (#elemtype info)
+    ]
+  fun smlArrayType (info: array_info) =
+    primTypeToSML (#elemtype info) ^ " Array.array"
+end
+
 local
 
-  (* Extracting the Futhark error string is somewhat tricky, for two reasons:
-  
-  1) We have to convert it to an SML string.
-  
-  2) We are responsible for freeing the C string.
-  
-  Our solution is to allocate an SML string, copy the C string into it,
-  then free the C string.
-   *)
-
-  val strlen =
-    ["fun strlen (p: MLton.Pointer.t) ="]
-    @
-    map indent
-      [ "let"
-      , indent "fun loop i ="
-      , indent (indent
-          ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
-      , "in"
-      , indent "loop 0"
-      , "end"
-      ]
-
-  val strcpy =
-    [ "fun strcpy (p: MLton.Pointer.t) : string ="
-    , indent "CharVector.tabulate (strlen p, fn i =>"
-    , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
-    ]
-
-  val mk_cstring =
-    [ (* This next function is to create a guaranteed
-      NUL-terminated C string, which mlton does not othewise guarantee. *)
-      "void* mk_cstring (const char* s, int64_t n);"
-    , "void* mk_cstring (const char* s, int64_t n) {"
-    , "  char *out = malloc((size_t)n + 1);"
-    , "  out[n] = 0;"
-    , "  strncpy(out, s, (size_t)n);"
-    , "  return out;"
-    , "}"
-    ]
-
-  fun fficall cfun args ret =
-    let
-      val (arg_es, arg_ts) = ListPair.unzip args
-    in
-      apply
-        (parens
-           ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> " ^ ret
-            ^ ";")) arg_es
-    end
-
-  fun mkSize pointer (info: array_info) v =
+  fun mkSize fficall pointer (info: array_info) v =
     letbind
-      [( "shape_c"
-       , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-           pointer
-       )]
+      [ ( "shape_c"
+        , fficall (#shape (#ops info))
+            [("ctx", "futhark_context"), (v, pointer)] pointer
+        )
+      , ("r", Int.toString (#rank info))
+      , ("shape_ml", apply "Int64Array.array" ["r", "0"])
+      , ( "_"
+        , fficall "smlfut_memcpy"
+            [ ("shape_ml", "Int64Array.array")
+            , ("shape_c", pointer)
+            , ("r*8", "Int64.int")
+            ] pointer
+        )
+      ]
       [(mkProd (List.tabulate (#rank info, fn i =>
           apply "Int64.toInt"
-            [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]])))]
+            [apply "Int64Array.sub" ["shape_ml", Int.toString i]])))]
 
 
-  fun mkShape pointer (info: array_info) v =
+  fun mkShape fficall pointer (info: array_info) v =
     letbind
-      [( "shape_c"
-       , fficall (#shape (#ops info)) [("ctx", "futhark_context"), (v, pointer)]
-           pointer
-       )]
+      [ ( "shape_c"
+        , fficall (#shape (#ops info))
+            [("ctx", "futhark_context"), (v, pointer)] pointer
+        )
+      , ("r", Int.toString (#rank info))
+      , ("shape_ml", apply "Int64Array.array" [Int.toString (#rank info), "0"])
+      , ( "_"
+        , fficall "smlfut_memcpy"
+            [ ("shape_ml", "Int64Array.array")
+            , ("shape_c", pointer)
+            , ("r*8", "Int64.int")
+            ] pointer
+        )
+      ]
       [tuple_e (List.tabulate (#rank info, fn i =>
          apply "Int64.toInt"
-           [apply "MLton.Pointer.getInt64" ["shape_c", Int.toString i]]))]
-
-  fun futharkArrayStructDefMLTon pointer null defs (data_t: string) manifest
+           [apply "Int64Array.sub" ["shape_ml", Int.toString i]]))]
+in
+  fun futharkArrayStructDef fficall pointer null defs (data_t: string) manifest
     (info as {ctype, rank, elemtype, ops}) =
     let
       val shape =
         if rank = 1 then
-          ["Int64.fromInt shape"]
+          ["shape"]
         else
           List.tabulate (rank, fn i =>
-            apply "Int64.fromInt" ["#" ^ Int.toString (i + 1) ^ " shape"])
-      val shape_args = map (fn x => (x, "Int64.int")) shape
+            parens ("#" ^ Int.toString (i + 1) ^ " shape"))
+      val shape_args =
+        map (fn x => (apply "Int64.fromInt" [x], "Int64.int")) shape
     in
       structdef (futharkArrayStruct info) NONE
         ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
@@ -815,12 +828,13 @@ local
               [ (fficall (#free ops)
                    ([("ctx", "futhark_context"), ("data", pointer)]) "int")
               , "ctx"
-              ]] @ fundef "shape" ["(ctx,data)"] (mkShape pointer info "data")
+              ]]
+         @ fundef "shape" ["(ctx,data)"] (mkShape fficall pointer info "data")
          @
          fundef "values_into" ["(ctx, data)", "slice"]
            (letbind
               [ ("(arr, i, n)", "Slice.base slice")
-              , ("m", unlines (mkSize pointer info "data"))
+              , ("m", unlines (mkSize fficall pointer info "data"))
               , ("()", "if n <> m then raise Size else ()")
               , ( "()"
                 , apply "error_check"
@@ -837,74 +851,136 @@ local
          @
          fundef "values" ["(ctx, data)"]
            (letbind
-              [ ("n", unlines (mkSize pointer info "data"))
+              [ ("n", unlines (mkSize fficall pointer info "data"))
               , ( "out"
                 , apply ("Array.array") ["n", blankRef null manifest elemtype]
                 )
               , ("()", "values_into (ctx, data) (Slice.full out)")
               ] ["out"]))
     end
+end
+
+local
+  (* Extracting the Futhark error string is somewhat tricky, for two reasons:
+  
+  1) We have to convert it to an SML string.
+  
+  2) We are responsible for freeing the C string.
+  
+  Our solution is to allocate an SML string, copy the C string into it,
+  then free the C string.
+   *)
+  structure MLtonDefs =
+  struct
+    val pointer = "MLton.Pointer.t"
+    val null = "MLton.Pointer.null"
+
+    fun fficall cfun args ret =
+      let
+        val (arg_es, arg_ts) = ListPair.unzip args
+      in
+        apply
+          (parens
+             ("_import \"" ^ cfun ^ "\" public : " ^ tuple_t arg_ts ^ " -> "
+              ^ ret ^ ";")) arg_es
+      end
+
+    val util_defs =
+      ["fun strlen (p: MLton.Pointer.t) ="]
+      @
+      map indent
+        [ "let"
+        , indent "fun loop i ="
+        , indent (indent
+            ("if MLton.Pointer.getWord8 (p, i) = 0w0 then i else loop (i+1)"))
+        , "in"
+        , indent "loop 0"
+        , "end"
+        ]
+      @
+      [ "fun strcpy (p: MLton.Pointer.t) : string ="
+      , indent "CharVector.tabulate (strlen p, fn i =>"
+      , indent "Char.chr (Word8.toInt (MLton.Pointer.getWord8 (p, i))))"
+      ]
+  end
+
+  val fficall = MLtonDefs.fficall
 in
-  structure MLTonMono =
+  structure MLtonMono =
     Smlfut
       (struct
-         val pointer = "MLton.Pointer.t"
-         val null = "MLton.Pointer.null"
-         val fficall = fficall
-         val util_defs = strlen @ strcpy
-         val cdefs = mk_cstring
-         val sig_FUTHARK_ARRAY = sig_FUTHARK_MONO_ARRAY
-         fun smlArrayType (info: array_info) =
-           primTypeToSML (#elemtype info) ^ " Array.array"
-         fun smlArrayType info = monoArrayModule info ^ ".array"
-         fun futharkArrayStructSpec (info: array_info) =
-           [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
-           , "where type ctx = ctx"
-           , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-           , "  and type Array.array = " ^ monoArrayModule info ^ ".array"
-           , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
-           , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
-           , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
-           ]
-         fun futharkArrayStructDef manifest info =
-           futharkArrayStructDefMLTon pointer null
-             [ "structure Array = " ^ monoArrayModule info
-             , "structure Slice = " ^ smlArraySliceModule info
-             ] (smlArrayType info) manifest info
+         open MonoDefs
+         open MLtonDefs
+         val futharkArrayStructDef = fn manifest =>
+           fn info =>
+             futharkArrayStructDef fficall pointer null
+               [ "structure Array = " ^ monoArrayModule info
+               , "structure Slice = " ^ smlArraySliceModule info
+               ] (smlArrayType info) manifest info
        end)
 
-  structure MLTonPoly =
+  structure MLtonPoly =
     Smlfut
       (struct
-         val pointer = "MLton.Pointer.t"
-         val null = "MLton.Pointer.null"
-         val fficall = fficall
-         val util_defs = strlen @ strcpy
-         val cdefs = mk_cstring
-         val sig_FUTHARK_ARRAY = sig_FUTHARK_POLY_ARRAY
-         fun futharkArrayStructSpec (info: array_info) =
-           [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
-           , "where type ctx = ctx"
-           , "  and type shape = " ^ shapeTypeOfRank (#rank info)
-           , "  and type elem = " ^ primTypeToSML (#elemtype info)
-           ]
-         fun smlArrayType (info: array_info) =
-           primTypeToSML (#elemtype info) ^ " Array.array"
-         fun futharkArrayStructDef manifest info =
-           futharkArrayStructDefMLTon pointer null
-             [ "structure Array = Array"
-             , "structure Slice = ArraySlice"
-             , "type elem = " ^ primTypeToSML (#elemtype info)
-             ] (smlArrayType info) manifest info
+         open PolyDefs
+         open MLtonDefs
+         val futharkArrayStructDef = fn manifest =>
+           fn info =>
+             futharkArrayStructDef fficall pointer null
+               [ "structure Array = Array"
+               , "structure Slice = ArraySlice"
+               , "type elem = " ^ primTypeToSML (#elemtype info)
+               ] (smlArrayType info) manifest info
        end)
 end
 
-datatype array_mode = MONO_ARRAYS | POLY_ARRAYS
+structure MLKit =
+  Smlfut
+    (struct
+       open MonoDefs
+       val pointer = "foreignptr"
+       val null = "NULL"
+       (* Note that we always do auto-conversion here. *)
+       fun fficall cfun args ret =
+         ("prim "
+          ^
+          parens
+            ("\"@" ^ cfun ^ "\", "
+             ^ tuple_e (map (fn (x, t) => parens (x ^ " : " ^ t)) args)) ^ " : "
+          ^ ret)
+
+       val util_defs =
+         [valdef "NULL" "prim (\"@mknull\", ()) : foreignptr"]
+         @
+         fundef "strlen" ["(p: foreignptr)"]
+           ["prim (\"@strlen\", (p)) : Int64.int"]
+         @
+         fundef "strcpy" ["(p: foreignptr)"]
+           (letbind
+              [ ("n", "strlen p")
+              , ("s", "CharVector.tabulate (Int64.toInt n, fn i => chr 0)")
+              , ( "_"
+                , fficall "smlfut_memcpy"
+                    [("s", "string"), ("p", pointer), ("n", "Int64.int")]
+                    pointer
+                )
+              ] ["s"])
+
+       val futharkArrayStructDef = fn manifest =>
+         fn info =>
+           futharkArrayStructDef fficall pointer null
+             [ "structure Array = " ^ monoArrayModule info
+             , "structure Slice = " ^ smlArraySliceModule info
+             ] (smlArrayType info) manifest info
+
+     end)
+
+datatype target = MLTON_MONO | MLTON_POLY | MLKIT
 
 val signature_opt: string option ref = ref NONE
 val structure_opt: string option ref = ref NONE
 val output_opt: string option ref = ref NONE
-val array_mode = ref POLY_ARRAYS
+val target = ref MLTON_POLY
 
 fun showVersion () =
   ( print ("smlfut " ^ version ^ "\n")
@@ -941,14 +1017,32 @@ fun options () : unit GetOpt.opt_descr list =
     , desc = "Put files here."
     }
   , { short = []
+    , long = ["target"]
+    , arg = GetOpt.REQ_ARG
+        ( fn s =>
+            target
+            :=
+            (case s of
+               "mlton-poly" => MLTON_POLY
+             | "mlton-mono" => MLTON_MONO
+             | "mlkit" => MLKIT
+             | _ =>
+                 ( print ("Unknown target: " ^ s)
+                 ; OS.Process.exit OS.Process.failure
+                 ))
+        , "TARGET"
+        )
+    , desc = "Target MLton with polymorphic arrays"
+    }
+  , { short = []
     , long = ["poly-arrays"]
-    , arg = GetOpt.NO_ARG (fn () => array_mode := POLY_ARRAYS)
-    , desc = "Use polymorphic SML arrays (the default)."
+    , arg = GetOpt.NO_ARG (fn () => target := MLTON_POLY)
+    , desc = "Equivalent to --target=mlton-poly"
     }
   , { short = []
     , long = ["mono-arrays"]
-    , arg = GetOpt.NO_ARG (fn () => array_mode := MONO_ARRAYS)
-    , desc = "Use monomorphic SML arrays."
+    , arg = GetOpt.NO_ARG (fn () => target := MLTON_MONO)
+    , desc = "Equivalent to --target=mlton-mono"
     }
   ]
 and usage () =
@@ -984,9 +1078,10 @@ fun main () =
             NONE => basefile
           | SOME s => s
         val generate =
-          case !array_mode of
-            MONO_ARRAYS => MLTonMono.generate
-          | POLY_ARRAYS => MLTonPoly.generate
+          case !target of
+            MLTON_MONO => MLtonMono.generate
+          | MLTON_POLY => MLtonPoly.generate
+          | MLKIT => MLKit.generate
         val (sig_s, struct_s, c_s) = generate sig_name struct_name m
       in
         checkValidName sig_name;

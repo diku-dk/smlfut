@@ -24,10 +24,12 @@ with an SML compiler.
 .Bl -tag
 .
 .It Fl -mono-arrays
-Use monomorphic arrays in signature.
+Equivalent
+.Fl -target=mlton-mono .
 .
 .It Fl -poly-arrays
-Use polymorphic arrays in signature.  This is the default.
+Equivalent to
+.Fl -target=mlton-poly .
 .
 .It Fl -output-directory Ns = Ns Ar NAME
 Write output files to this directory.
@@ -39,6 +41,14 @@ basename of the manifest file.
 .It Fl -structure-name Ns = Ns Ar NAME
 Use this name for the SML structure.  Defaults to the basename of the
 manifest file.
+.
+.It Fl -target Ns = Ns Ar TARGET
+Target this SML compiler.  Must be one of
+.Ar mlkit ,
+.Ar mlton-poly ,
+or
+.Ar mlton-mono
+(the default).
 .
 .It Fl V Ns , Fl -version
 Print version information.
@@ -254,12 +264,12 @@ if you wish to check for errors.
 .
 .Sh Array Structures
 .
-Depending on whether
-.Fl -mono-arrays Ns
-or
-.Fl -poly-arrays Ns
-is used, Futhark array type is represented by a structure implementing
-one of the the signatures below.
+Depending on the target compiler, each Futhark array type is
+represented by a structure implementing one of the the signatures
+below.  The
+.Ar mlton-poly
+target uses polymorphic arrays, while all other targets use
+monomorphic arrays.
 .
 .Bd -literal -offset indent
 signature FUTHARK_MONO_ARRAY =
