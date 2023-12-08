@@ -23,7 +23,7 @@ test_mono/test.sml: test/test.json smlfut
 test_mlkit/test.sml: test/test.json smlfut
 	./smlfut --target=mlkit test/test.json -o test_mlkit
 
-test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml
+test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml test_mlkit/test.smlfut.c
 	cd test_mlkit && gcc -c ../test/test.c test.smlfut.c
 	cd test_mlkit && ar r libtest.a test.o test.smlfut.o
 	$(MLKIT) -o test_mlkit/test -libdirs test_mlkit -libs "m,c,dl,test" test_mlkit/test.mlb
