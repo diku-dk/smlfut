@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## Next
+
+* Opaque types now support `store`/`restore` functions.
+
 ## [1.2.0]
 
 * MLKit is now supported.

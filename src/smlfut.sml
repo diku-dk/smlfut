@@ -47,6 +47,8 @@ val sig_FUTHARK_RECORD =
   , "  type record"
   , "  val values : t -> record"
   , "  val new : ctx -> record -> t"
+  , "val store   : t -> Word8Array.array"
+  , "val restore : ctx -> Word8ArraySlice.slice -> t"
   , "end"
   ]
 
@@ -134,6 +136,11 @@ fun valuesIntoFunction (array: array_info) =
 fun newSyncFunction (array: array_info) =
   "futhark_new_sync_" ^ #elemtype array ^ "_" ^ Int.toString (#rank array) ^ "d"
 
+fun storeOpaqueFunction (opaque: opaque_info) =
+  "smlfut_" ^ #store (#ops opaque)
+
+fun restoreOpaqueFunction (opaque: opaque_info) =
+  "smlfut_" ^ #restore (#ops opaque)
 
 fun blankRef manifest t =
   case lookupType manifest t of
@@ -408,13 +415,76 @@ struct
              @
              fundef "free" ["(ctx,data)"]
                [apply "error_check"
-                  [ (fficall (#free (#ops info))
-                       ([("ctx", "futhark_context"), ("data", pointer)]) "int")
+                  [ fficall (#free (#ops info))
+                      [("ctx", "futhark_context"), ("data", pointer)] "int"
                   , "ctx"
-                  ]] @ more)
+                  ]]
+             @
+             fundef "store" [("(ctx,obj)")]
+               (letbind
+                  [ ("n_arr", "Int64Array.array(1,0)")
+                  , ( "_"
+                    , fficall (#store (#ops info))
+                        [ ("ctx", "futhark_context")
+                        , ("obj", pointer)
+                        , ("NULL", pointer)
+                        , ("n_arr", "Int64Array.array")
+                        ] "int"
+                    )
+                  , ("n", "Int64Array.sub(n_arr, 0)")
+                  , ("out", "Word8Array.array(Int64.toInt n, 0w0)")
+                  , ( "()"
+                    , apply "error_check"
+                        [ fficall (storeOpaqueFunction info)
+                            [ ("ctx", "futhark_context")
+                            , ("obj", pointer)
+                            , ("out", "Word8Array.array")
+                            ] "int"
+                        , "ctx"
+                        ]
+                    )
+                  ] ["out"])
+             @
+             fundef "restore" ["{cfg,ctx}", "slice"]
+               (letbind
+                  [ ("(arr,i,n)", "Word8ArraySlice.base slice")
+                  , ( "obj"
+                    , fficall (restoreOpaqueFunction info)
+                        [ ("ctx", "futhark_context")
+                        , ("arr", "Word8Array.array")
+                        , ("Int64.fromInt i", "Int64.int")
+                        ] pointer
+                    )
+                  ]
+                  [ "if isnull obj"
+                  , "then raise Error (get_error ctx)"
+                  , "else (ctx, obj)"
+                  ]) @ more)
         end
 
-  fun generateTypeCFuns (name, FUTHARK_OPAQUE _) = []
+  fun generateTypeCFuns (name, FUTHARK_OPAQUE opaque) =
+        let
+          val store = storeOpaqueFunction opaque
+          val restore = restoreOpaqueFunction opaque
+        in
+          [ "int " ^ #store (#ops opaque)
+            ^ "(void* ctx, const void* obj, void* p, size_t *n);"
+
+          , "int " ^ store ^ "(void* ctx, void* opaque, void* out) {"
+          , "  size_t n;"
+          , "  int r = " ^ #store (#ops opaque) ^ "(ctx, opaque, &out, &n);"
+          , "  if (r != 0) { return r; };"
+          , "  return futhark_context_sync(ctx);"
+          , "}"
+          , ""
+          , "void* " ^ #restore (#ops opaque) ^ "(void* ctx, const void* p);"
+          , ""
+          , " void* " ^ restore
+            ^ "(void* ctx, const unsigned char* p, size_t offset) {"
+          , "  " ^ #restore (#ops opaque) ^ "(ctx, p + offset);"
+          , "}"
+          ]
+        end
     | generateTypeCFuns (name, FUTHARK_ARRAY array) =
         let
           val name = valuesIntoFunction array
@@ -426,6 +496,7 @@ struct
         in
           [ "int " ^ #values (#ops array) ^ "(void *ctx, void* arr, " ^ cet
             ^ " *data);"
+
           , "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
             ^ " *data, int64_t offset);"
           , "int " ^ name ^ "(void *ctx, void* arr, " ^ cet
@@ -434,11 +505,15 @@ struct
           , "  if (ret == 0) { return futhark_context_sync(ctx); }"
           , "  else { return ret; }"
           , "}"
+
           , "void* " ^ #new (#ops array) ^ "(void *ctx, " ^ cet ^ " *data, "
             ^ dim_params ^ ");"
+
           , "void* " ^ #free (#ops array) ^ "(void *ctx, void* arr);"
+
           , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet
             ^ " *data, int64_t i," ^ dim_params ^ ");"
+
           , "void* " ^ newSyncFunction array ^ "(void *ctx, " ^ cet
             ^ " *data, int64_t i," ^ dim_params ^ ") {"
           , "  void* arr = " ^ #new (#ops array) ^ "(ctx, data+i, "

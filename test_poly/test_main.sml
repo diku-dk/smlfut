@@ -92,16 +92,18 @@ fun test_size_fails ctx =
   handle Size => ()
 
 fun test_values_fails ctx =
-    let val arr =
-            Futhark.Int32Array2.new ctx
-                                    (ArraySlice.full (Array.fromList [1, 2, 3, 4, 5,6]))
-                                    (2,3)
-        val out_slice = ArraySlice.slice(Array.fromList [1, 2, 3, 4, 5, 6], 1, NONE)
-    in
-      (Futhark.Int32Array2.values_into arr out_slice;
-       raise Fail "Should have failed")
-      handle Size => Futhark.Int32Array2.free arr
-    end
+  let
+    val arr =
+      Futhark.Int32Array2.new ctx
+        (ArraySlice.full (Array.fromList [1, 2, 3, 4, 5, 6])) (2, 3)
+    val out_slice = ArraySlice.slice
+      (Array.fromList [1, 2, 3, 4, 5, 6], 1, NONE)
+  in
+    ( Futhark.Int32Array2.values_into arr out_slice
+    ; raise Fail "Should have failed"
+    )
+    handle Size => Futhark.Int32Array2.free arr
+  end
 
 fun test_record ctx =
   let
@@ -112,9 +114,23 @@ fun test_record ctx =
     Futhark.Opaque.record.free record
   end
 
+fun test_store ctx =
+  let
+    val record = Futhark.Opaque.record.new ctx {a = 2, b = true}
+    val bytes = Futhark.Opaque.record.store record
+    val () = Futhark.Opaque.record.free record
+    val record = Futhark.Opaque.record.restore ctx (Word8ArraySlice.full bytes)
+    val {a, b} = Futhark.Opaque.record.values record
+  in
+    if a <> 2 orelse b <> true then raise Fail "Unexpected result." else ();
+    Futhark.Opaque.record.free record
+  end
+
+
 val () =
   let
-    val ctx = Futhark.Context.new (Futhark.Config.cache (SOME "futhark.cache") Futhark.Config.default)
+    val ctx = Futhark.Context.new
+      (Futhark.Config.cache (SOME "futhark.cache") Futhark.Config.default)
     val x = Futhark.Entry.main ctx 0w123
   in
     test_i32 ctx;
@@ -130,6 +146,9 @@ val () =
     test ctx "test_values_fails" test_values_fails;
 
     test ctx "test_record" test_record;
+
+    test ctx "test_store" test_store;
+
 
     Futhark.Context.free ctx
   end

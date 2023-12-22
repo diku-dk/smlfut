@@ -327,9 +327,12 @@ Construct a Futhark array from an SML array slice.  Raises
 .Li Size
 if the length of the array slice is not equal to the product of the
 provided shape.
+.It Li free
+Frees the array. Do not use it again. If you do not manually call this
+function when you are done with the array, then memory will be leaked.
 .It Li values
 Synchronously copy the Futhark array into a freshly constructed SML array.
-.It Li values
+.It Li values_into
 Synchronously copy the Futhark array into an existing SML array slice.  Raises
 .Li Size
 if the length of the slice is not equal to the product of the array
@@ -345,9 +348,30 @@ signature FUTHARK_OPAQUE =
 sig
   type t
   type ctx
-  val free : t -> unit
+  val free    : t -> unit
+  val store   : t -> Word8Array.array
+  val restore : ctx -> Word8ArraySlice.slice -> t
 end
 .Ed
+.Ss Description
+.
+.Bl -tag -width indent
+.It Li free
+Frees the object. Do not use it again. If you do not manually call this
+function when you are done with the object, then memory will be leaked.
+.It Li store
+Serialise the value to a byte array.
+.It Li restore
+Restore a value from its serialised representation. Note that you
+should not pass untrusted data to this function, as this can result in
+memory corruption.
+.El
+.
+.Pp
+The serialisation format is stable across compiler backends and
+recompilation, but not necessarily across different compiler versions,
+although in practice compatibility is broken very rarely.
+.
 .Sh Record types
 .
 Each record type is represented by a structure implementing the
