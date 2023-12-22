@@ -316,7 +316,7 @@ for
 .It Li array
 The abstract array type.
 .It Li ctx
-The Futhark context type.  An array structure refines this to be identitical to the
+The Futhark context type.  Each array structure refines this to be identical to the
 .Li ctx
 type of the top level structure.
 .It Li shape
@@ -330,7 +330,7 @@ if the length of the array slice is not equal to the product of the
 provided shape.
 .It Li free
 Frees the array. Do not use it again. If you do not manually call this
-function when you are done with the array, then memory will be leaked.
+function when you are done with the array, then you leak memory.
 .It Li values
 Synchronously copy the Futhark array into a freshly constructed SML array.
 .It Li values_into
