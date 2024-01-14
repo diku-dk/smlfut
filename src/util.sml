@@ -1,3 +1,11 @@
+fun mapi f xs =
+  let
+    fun recurse _ [] = []
+      | recurse i (x :: xs') =
+          f i x :: recurse (i + 1) xs'
+  in
+    recurse 0 xs
+  end
 val unlines = concat o map (fn s => s ^ "\n")
 val unwords = concat o map (fn s => s ^ " ")
 
@@ -48,6 +56,19 @@ fun stringlit s =
     "\"" ^ String.translate escape s ^ "\""
   end
 
+fun case_e _ [] = raise Empty
+  | case_e scrutinee (c :: cs) =
+      let
+        fun prefix _ [] = []
+          | prefix s (l :: ls) =
+              (s ^ l) :: ls
+        fun ppCase (pat, rhs) =
+          pat ^ " =>" :: map (indent o indent) rhs
+      in
+        ["case " ^ scrutinee ^ " of"] @ prefix "  " (ppCase c)
+        @ List.concat (map (prefix "| " o ppCase) cs)
+      end
+
 fun fundef fname args body =
   ["fun " ^ fname ^ " " ^ punctuate " " args ^ " ="] @ map indent body
 
@@ -75,6 +96,15 @@ fun sigexp specs =
 
 fun sigdef name specs =
   ["signature " ^ name ^ " = sig"] @ map indent specs @ ["end"]
+
+fun datatypedef _ [] = raise Empty
+  | datatypedef name (v :: vs) =
+      let
+        fun f (c, payload) = c ^ " of " ^ tuple_t payload
+      in
+        ("datatype " ^ name ^ " =") :: ("    " ^ f v)
+        :: map (fn x => "  | " ^ f x) vs
+      end
 
 fun structspec name sige =
   "structure " ^ name ^ " : " ^ sige

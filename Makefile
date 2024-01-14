@@ -40,7 +40,8 @@ run_test_mono: test_mono/test
 run_test_mlkit: test_mlkit/test
 	cd test_mlkit && ./test
 
-run_test: run_test_poly run_test_mono run_test_mlkit
+# mlkit temporarily disabled as there is some codegen bug.
+run_test: run_test_poly run_test_mono # run_test_mlkit
 
 smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf

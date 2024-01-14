@@ -12,9 +12,16 @@ type record = {a: i32, b: bool}
 
 entry mk_record (a: i32) (b: bool) : record = {a,b}
 
-type sum_opaque = #foo i32
+type sum_opaque [n] = #foo i32 | #bar record | #baz ([n]i32) bool
 
-entry mk_sum_opaque x : sum_opaque = #foo x
+entry mk_sum_opaque x : sum_opaque [42] = #foo x
 
-type record_with_opaque = {f: sum_opaque}
+entry sum_opaque_size [n] (_: sum_opaque [n]) = n
+
+entry sum_opaque_rot (s: sum_opaque []) : ?[n].sum_opaque [n] =
+  match s case #foo x -> #bar {a=x, b=true}
+          case #bar {a,b} -> #baz (replicate 10 a) b
+          case #baz arr _ -> #foo (i32.sum arr)
+
+type~ record_with_opaque = {f: sum_opaque []}
 entry record_with_opaque x : record_with_opaque = {f = mk_sum_opaque x}

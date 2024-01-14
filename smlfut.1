@@ -387,13 +387,37 @@ sig
 end
 .Ed
 .Pp
-Any struct that implements this signature will refine the record type
-such that the Futhark value can be constructed from an appropriate SML
-record.
+Any struct that implements this signature will refine the
+.Li record
+type such that the Futhark value can be constructed from an
+appropriate SML record.
 .
 Note that if you convert a Futhark record into an SML record with
 .Li values ,
 you must still also free the original Futhark record at some point.
+.
+.Sh Sum types
+.
+Each sum type is represented by a structure implementing the signature
+below.
+.Bd -literal -offset indent
+signature FUTHARK_SUM =
+sig
+  include FUTHARK_OPAQUE
+  type sum
+  val values: t -> sum
+  val new: ctx -> sum -> t
+end
+.Ed
+.Pp
+Any struct that implements this signature will define the type
+.Li sum
+to be an SML mirror of the Futhark-level sum type.
+.
+Note that if you convert a Futhark sum type value into an SML value
+with
+.Li values ,
+you must still also free the original Futhark object at some point.
 .
 .Sh Entry points
 .

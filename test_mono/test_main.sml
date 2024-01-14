@@ -116,6 +116,24 @@ fun test_store ctx =
     Futhark.Opaque.record.free record
   end
 
+fun test_sum ctx =
+  let
+    val sum =
+      Futhark.Opaque.sum_opaque.new ctx (Futhark.Opaque.sum_opaque.foo 2)
+    val n = Futhark.Entry.sum_opaque_size ctx sum
+    val sum_next = Futhark.Entry.sum_opaque_rot ctx sum
+    val m = Futhark.Entry.sum_opaque_size ctx sum_next
+  in
+    if n <> 0 then raise Fail ("Unexpected n: " ^ Int.toString n) else ();
+    if m <> 10 then raise Fail ("Unexpected m: " ^ Int.toString m) else ();
+    (case Futhark.Opaque.sum_opaque.values sum_next of
+       Futhark.Opaque.sum_opaque.foo _ => raise Fail "Unexpected foo"
+     | Futhark.Opaque.sum_opaque.baz _ => raise Fail "Unexpected baz"
+     | Futhark.Opaque.sum_opaque.bar r => Futhark.Opaque.record.free r);
+    Futhark.Opaque.sum_opaque.free sum;
+    Futhark.Opaque.sum_opaque.free sum_next
+  end
+
 val () =
   let
     val ctx = Futhark.Context.new
@@ -133,6 +151,8 @@ val () =
     test ctx "test_record" test_record;
 
     test ctx "test_store" test_store;
+
+    test ctx "test_sum" test_sum;
 
     Futhark.Context.free ctx
   end

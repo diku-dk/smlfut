@@ -52,6 +52,16 @@ val sig_FUTHARK_RECORD =
   , "end"
   ]
 
+val sig_FUTHARK_SUM =
+  [ "signature FUTHARK_SUM ="
+  , "sig"
+  , "  include FUTHARK_OPAQUE"
+  , "  type sum"
+  , "  val values: t -> sum"
+  , "  val new: ctx -> sum -> t"
+  , "end"
+  ]
+
 (* Actual logic. *)
 
 fun gpuBackend "opencl" = true
@@ -321,29 +331,47 @@ struct
   fun origNameComment name =
     ["(* " ^ name ^ " *)"]
 
+  fun sumDef manifest name (sum: sum) =
+    datatypedef name
+      (map (fn (c, v) => (c, map (typeToSMLInside manifest) (#payload v)))
+         (#variants sum))
+
   fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
         origNameComment name @ futharkArrayStructSpec info
     | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
-        case #record info of
-          NONE =>
-            origNameComment name
-            @
-            [ structspec (escapeName name) "FUTHARK_OPAQUE"
-            , "where type ctx = ctx"
-            ]
-        | SOME record =>
-            let
-              fun fieldType (name, {project, type_}) =
-                (name, typeToSMLInside manifest type_)
-            in
-              origNameComment name
-              @
-              [ structspec name "FUTHARK_RECORD"
-              , "where type ctx = ctx"
-              , "  and type record = "
-                ^ record_t (map fieldType (#fields record))
-              ]
-            end
+        origNameComment name
+        @
+        (case (#record info, #sum info) of
+           (NONE, NONE) =>
+             [ structspec (escapeName name) "FUTHARK_OPAQUE"
+             , "where type ctx = ctx"
+             ]
+         | (SOME record, _) =>
+             let
+               fun fieldType (name, {project, type_}) =
+                 (name, typeToSMLInside manifest type_)
+             in
+               [ structspec name "FUTHARK_RECORD"
+               , "where type ctx = ctx"
+               , "  and type record = "
+                 ^ record_t (map fieldType (#fields record))
+               ]
+             end
+         | (_, SOME sum) =>
+             [structspec name "", "sig"] @ sumDef manifest name sum
+             @
+             [ "include FUTHARK_SUM"
+             , "where type ctx = ctx"
+             , "  and type sum = " ^ name
+             , "end"
+             ])
+
+  fun valFromPtrArr out =
+    tuple_e
+      [ "ctx"
+      , fficall "smlfut_to_pointer"
+          [(apply "Word64Array.sub" [out, "0"], "Word64.word")] pointer
+      ]
 
   fun generateTypeDef manifest
         (name, FUTHARK_ARRAY (info as {ctype, rank, elemtype, ops})) =
@@ -351,9 +379,9 @@ struct
     | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
         let
           val more =
-            case #record info of
-              NONE => []
-            | SOME record =>
+            case (#record info, #sum info) of
+              (NONE, NONE) => []
+            | (SOME record, _) =>
                 let
                   fun getField (name, {project, type_}) =
                     ( name
@@ -398,14 +426,75 @@ struct
                                  ] @ map fieldArg (#fields record)) "int")
                            , "ctx"
                            ] ^ ";"
-                       , tuple_e
-                           [ "ctx"
-                           , fficall "smlfut_to_pointer"
-                               [( apply "Word64Array.sub" ["out", "0"]
-                                , "Word64.word"
-                                )] pointer
-                           ]
+                       , valFromPtrArr "out"
                        ])
+                end
+            | (_, SOME sum) =>
+                let
+                  fun payload i = "v" ^ Int.toString i
+                  fun payloadArg i t =
+                    case lookupType manifest t of
+                      NONE => (payload i, apiType t)
+                    | SOME _ => (apply "#2" [payload i], apiType t)
+                  fun mkCase (vname, variant) =
+                    let
+                      val pat =
+                        vname ^ " "
+                        ^
+                        tuple_e (List.tabulate
+                          (length (#payload variant), payload))
+                    in
+                      ( pat
+                      , letbind
+                          [("out", apply "Word64Array.array" ["1", "0w0"])]
+                          [ apply "error_check"
+                              [ fficall (#construct variant)
+                                  ([ ("ctx", "futhark_context")
+                                   , ("out", "Word64Array.array")
+                                   ] @ (mapi payloadArg (#payload variant)))
+                                  "int"
+                              , "ctx"
+                              ] ^ ";"
+                          , valFromPtrArr "out"
+                          ]
+                      )
+                    end
+                  fun destructVariant i (vname, variant) =
+                    let
+                      fun outv i = "out" ^ Int.toString i
+                      fun bindOut i t =
+                        (outv i, mkOut manifest t)
+                      fun outArg i t = (outv i, outType t)
+                      fun outRes i t =
+                        case lookupType manifest t of
+                          NONE => fetchOut (outv i) t
+                        | SOME _ => tuple_e ["ctx", fetchOut (outv i) t]
+                    in
+                      ( Int.toString i
+                      , letbind (mapi bindOut (#payload variant))
+                          [ apply "error_check"
+                              [ fficall (#destruct variant)
+                                  ([("ctx", "futhark_context")]
+                                   @ mapi outArg (#payload variant)
+                                   @ [("data", pointer)]) "int"
+                              , "ctx"
+                              ] ^ ";"
+                          , apply vname (mapi outRes (#payload variant))
+                          ]
+                      )
+                    end
+                in
+                  sumDef manifest name sum @ [typedef "sum" [] name]
+                  @
+                  fundef "new" ["{cfg,ctx}", "sum"] (case_e "sum"
+                    (map mkCase (#variants sum)))
+                  @
+                  fundef "values" ["(ctx,data)"]
+                    (case_e
+                       (fficall (#variant sum)
+                          [("ctx", "futhark_context"), ("data", pointer)] "int")
+                       (mapi destructVariant (#variants sum)
+                        @ [("_", ["raise Domain"])]))
                 end
         in
           structdef (escapeName name) NONE
@@ -540,8 +629,15 @@ struct
                   SOME _ => true
                 | NONE => isSome (List.find (fn x => x = v) known)
               fun usesKnown
-                    (name, FUTHARK_OPAQUE {ctype, ops, record = SOME record}) =
+                    ( name
+                    , FUTHARK_OPAQUE {ctype, ops, record = SOME record, sum = _}
+                    ) =
                     List.all (isKnown o #type_ o #2) (#fields record)
+                | usesKnown
+                    ( name
+                    , FUTHARK_OPAQUE {ctype, ops, sum = SOME sum, record = _}
+                    ) =
+                    List.all (List.all isKnown o #payload o #2) (#variants sum)
                 | usesKnown _ = true
               val (ok, next) = List.partition usesKnown rs
             in
@@ -795,7 +891,8 @@ struct
     in
       ( unlines
           (header @ sig_FUTHARK_ARRAY @ [""] @ sig_FUTHARK_OPAQUE @ [""]
-           @ sig_FUTHARK_RECORD @ [""] @ sigdef sig_name specs)
+           @ sig_FUTHARK_RECORD @ [""] @ sig_FUTHARK_SUM @ [""]
+           @ sigdef sig_name specs)
       , unlines (header @ structdef struct_name (SOME sig_name) defs)
       , unlines
           ([ "#include <stdint.h>"

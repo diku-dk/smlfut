@@ -16,10 +16,16 @@ type field = string * {project: string, type_: string}
 
 type record = {fields: field list, new: string}
 
+type variant =
+  string * {construct: string, destruct: string, payload: string list}
+
+type sum = {variants: variant list, variant: string}
+
 type opaque_info =
   { ctype: string
   , ops: {free: string, store: string, restore: string}
   , record: record option
+  , sum: sum option
   }
 
 datatype futhark_type =
@@ -46,6 +52,9 @@ fun lookupType (MANIFEST m) t =
   | NONE => NONE
 
 local
+  fun stringFromJSON (Json.STRING s) = s
+    | stringFromJSON _ = raise Fail "Not a string"
+
   fun lookBool obj k =
     case Json.objLook obj k of
       SOME (Json.BOOL b) => b
@@ -115,6 +124,17 @@ local
         )
     | fieldFromJSON _ = raise Fail "Invalid field in manifest."
 
+
+  fun variantFromJSON (Json.OBJECT obj) =
+        ( lookString obj "name"
+        , { payload = map stringFromJSON (lookArray obj "payload")
+          , construct = lookString obj "construct"
+          , destruct = lookString obj "destruct"
+          }
+        )
+    | variantFromJSON _ =
+        raise Fail "Invalid variant in manifest."
+
   fun typeFromJSON (name, Json.OBJECT obj) =
         ( name
         , case lookString obj "kind" of
@@ -137,6 +157,16 @@ local
                           { new = lookString robj "new"
                           , fields = (map fieldFromJSON
                               (lookArray robj "fields"))
+                          }
+                    | SOME _ => raise Fail "Invalid record in manifest."
+                , sum =
+                    case Json.objLook obj "sum" of
+                      NONE => NONE
+                    | SOME (Json.OBJECT sobj) =>
+                        SOME
+                          { variant = lookString sobj "variant"
+                          , variants = map variantFromJSON
+                              (lookArray sobj "variants")
                           }
                     | SOME _ => raise Fail "Invalid record in manifest."
                 }
