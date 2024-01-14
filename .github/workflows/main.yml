@@ -15,6 +15,7 @@ jobs:
       - uses: diku-dk/install-mlton@v1.0.0
       - uses: diku-dk/install-mlkit@v1.0.1
       - uses: diku-dk/install-futhark@v1.1.0
+        version: nightly
 
       - name: Check
         run: |
