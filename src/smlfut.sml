@@ -47,8 +47,8 @@ val sig_FUTHARK_RECORD =
   , "  type record"
   , "  val values : t -> record"
   , "  val new : ctx -> record -> t"
-  , "val store   : t -> Word8Array.array"
-  , "val restore : ctx -> Word8ArraySlice.slice -> t"
+  , "  val store   : t -> Word8Array.array"
+  , "  val restore : ctx -> Word8ArraySlice.slice -> t"
   , "end"
   ]
 
