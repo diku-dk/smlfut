@@ -2,7 +2,7 @@
 
 All user-visible changes are noted here.
 
-## Next
+## [1.3.0]
 
 * Opaque types now support `store`/`restore` functions.
 
