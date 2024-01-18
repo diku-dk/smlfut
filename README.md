@@ -24,6 +24,8 @@ different `PREFIX` to install elsewhere, e.g.:
 
     make install DESTDIR=$HOME/.local
 
+[![Packaging status](https://repology.org/badge/vertical-allrepos/smlfut.svg)](https://repology.org/project/smlfut/versions)
+
 ## Testing
 
 Run
