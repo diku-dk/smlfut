@@ -171,6 +171,9 @@ fun blankRef manifest t =
       | "bool" => "false"
       | _ => raise Fail ("blankRef: " ^ t)
 
+
+fun checkUseAfterFree free = "if !" ^ free ^ " then raise Free else ()"
+
 signature TARGET =
 sig
   val pointer: string
@@ -287,9 +290,10 @@ struct
         | inpParams i ({name = _, type_, unique = _} :: rest) =
             let
               val v = "inp" ^ Int.toString i
+              val v_free = v ^ "_free"
             in
               (case lookupType manifest type_ of
-                 SOME _ => "(_, " ^ v ^ ")"
+                 SOME _ => tuple_e ["_", v, "_", v_free]
                | _ => v) :: inpParams (i + 1) rest
             end
       fun outDecs i [] = []
@@ -311,13 +315,13 @@ struct
               val fetch = fetchOut v (#type_ out)
             in
               (case lookupType manifest (#type_ out) of
-                 SOME _ => tuple_e ["ctx", fetch]
+                 SOME _ => tuple_e ["ctx", fetch, "free", "ref false"]
                | _ => fetch) :: outRes (i + 1) rest
             end
     in
-      fundef name (["{cfg,ctx}", tuple_e (inpParams 0 inputs)])
+      fundef name (["{cfg,ctx,free}", tuple_e (inpParams 0 inputs)])
         (letbind
-           (outDecs 0 outputs
+           ([("()", checkUseAfterFree "free")] @ outDecs 0 outputs
             @
             [ ( "ret"
               , fficall cfun
@@ -371,6 +375,8 @@ struct
       [ "ctx"
       , fficall "smlfut_to_pointer"
           [(apply "Word64Array.sub" [out, "0"], "Word64.word")] pointer
+      , "free"
+      , "ref false"
       ]
 
   fun generateTypeDef manifest
@@ -378,6 +384,11 @@ struct
         futharkArrayStructDef manifest info
     | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
         let
+          fun wrapCheck ls =
+            letbind
+              [ ("()", checkUseAfterFree "ctx_free")
+              , ("()", checkUseAfterFree "obj_free")
+              ] ls
           val more =
             case (#record info, #sum info) of
               (NONE, NONE) => []
@@ -397,28 +408,43 @@ struct
                         ] ^ "; "
                       ^
                       (case lookupType manifest type_ of
-                         SOME _ => tuple_e ["ctx", fetchOut "out" type_]
+                         SOME _ =>
+                           tuple_e
+                             [ "ctx"
+                             , fetchOut "out" type_
+                             , "ctx_free"
+                             , "ref false"
+                             ]
                        | _ => fetchOut "out" type_) ^ " end"
                     )
                   fun fieldParam (name, {project, type_}) =
                     ( name
                     , case isPrimType type_ of
                         SOME _ => name
-                      | NONE => tuple_e ["_", name]
+                      | NONE => tuple_e ["_", name, "_", name ^ "_free"]
                     )
                   fun fieldArg (name, {project, type_}) = (name, apiType type_)
                   fun fieldType (name, {project, type_}) =
                     (name, typeToSMLInside manifest type_)
+                  fun fieldCheckFree (name, info) =
+                    case isPrimType (#type_ info) of
+                      SOME _ => ("()", "()")
+                    | NONE => ("()", checkUseAfterFree (name ^ "_free"))
                 in
                   [typedef "record" [] (record_t
                      (map fieldType (#fields record)))]
                   @
-                  fundef "values" ["(ctx,data)"]
-                    [record_e (map getField (#fields record))]
+                  fundef "values" ["(ctx,data,ctx_free,obj_free)"] (wrapCheck
+                    [record_e (map getField (#fields record))])
                   @
                   fundef "new"
-                    ["{cfg,ctx}", record_e (map fieldParam (#fields record))]
-                    (letbind [("out", apply "Word64Array.array" ["1", "0w0"])]
+                    [ "{cfg,ctx,free}"
+                    , record_e (map fieldParam (#fields record))
+                    ]
+                    (letbind
+                       ([("()", checkUseAfterFree "free")]
+                        @ map fieldCheckFree (#fields record)
+                        @ [("out", apply "Word64Array.array" ["1", "0w0"])])
                        [ apply "error_check"
                            [ (fficall (#new record)
                                 ([ ("ctx", "futhark_context")
@@ -436,6 +462,13 @@ struct
                     case lookupType manifest t of
                       NONE => (payload i, apiType t)
                     | SOME _ => (apply "#2" [payload i], apiType t)
+                  fun payloadCheckFree i type_ =
+                    case isPrimType type_ of
+                      SOME _ => ("()", "()")
+                    | NONE =>
+                        ( "()"
+                        , checkUseAfterFree (parens (apply "#4" [payload i]))
+                        )
                   fun mkCase (vname, variant) =
                     let
                       val pat =
@@ -446,7 +479,8 @@ struct
                     in
                       ( pat
                       , letbind
-                          [("out", apply "Word64Array.array" ["1", "0w0"])]
+                          (mapi payloadCheckFree (#payload variant)
+                           @ [("out", apply "Word64Array.array" ["1", "0w0"])])
                           [ apply "error_check"
                               [ fficall (#construct variant)
                                   ([ ("ctx", "futhark_context")
@@ -468,7 +502,13 @@ struct
                       fun outRes i t =
                         case lookupType manifest t of
                           NONE => fetchOut (outv i) t
-                        | SOME _ => tuple_e ["ctx", fetchOut (outv i) t]
+                        | SOME _ =>
+                            tuple_e
+                              [ "ctx"
+                              , fetchOut (outv i) t
+                              , "ctx_free"
+                              , "ref false"
+                              ]
                     in
                       ( Int.toString i
                       , letbind (mapi bindOut (#payload variant))
@@ -486,30 +526,37 @@ struct
                 in
                   sumDef manifest name sum @ [typedef "sum" [] name]
                   @
-                  fundef "new" ["{cfg,ctx}", "sum"] (case_e "sum"
-                    (map mkCase (#variants sum)))
+                  fundef "new" ["{cfg,ctx,free}", "sum"]
+                    (letbind [("()", checkUseAfterFree "free")] (case_e "sum"
+                       (map mkCase (#variants sum))))
                   @
-                  fundef "values" ["(ctx,data)"]
-                    (case_e
-                       (fficall (#variant sum)
-                          [("ctx", "futhark_context"), ("data", pointer)] "int")
-                       (mapi destructVariant (#variants sum)
-                        @ [("_", ["raise Domain"])]))
+                  fundef "values" ["(ctx,data,ctx_free,obj_free)"]
+                    (wrapCheck
+                       (case_e
+                          (fficall (#variant sum)
+                             [("ctx", "futhark_context"), ("data", pointer)]
+                             "int")
+                          (mapi destructVariant (#variants sum)
+                           @ [("_", ["raise Domain"])])))
                 end
         in
           structdef (escapeName name) NONE
             ([ typedef "ctx" [] "ctx"
-             , typedef "t" [] (tuple_t ["futhark_context", pointer])
+             , typedef "t" []
+                 (tuple_t ["futhark_context", pointer, "bool ref", "bool ref"])
              ]
              @
-             fundef "free" ["(ctx,data)"]
-               [apply "error_check"
-                  [ fficall (#free (#ops info))
-                      [("ctx", "futhark_context"), ("data", pointer)] "int"
-                  , "ctx"
-                  ]]
+             fundef "free" ["(ctx,data,ctx_free,obj_free)"] (wrapCheck
+               [ apply "error_check"
+                   [ fficall (#free (#ops info))
+                       [("ctx", "futhark_context"), ("data", pointer)] "int"
+                   , "ctx"
+                   ]
+               , ";"
+               , "obj_free := true"
+               ])
              @
-             fundef "store" [("(ctx,obj)")]
+             fundef "store" [("(ctx,obj,ctx_free,obj_free)")] (wrapCheck
                (letbind
                   [ ("n_arr", "Int64Array.array(1,0)")
                   , ( "_"
@@ -532,11 +579,12 @@ struct
                         , "ctx"
                         ]
                     )
-                  ] ["out"])
+                  ] ["out"]))
              @
-             fundef "restore" ["{cfg,ctx}", "slice"]
+             fundef "restore" ["{cfg,ctx,free}", "slice"]
                (letbind
-                  [ ("(arr,i,n)", "Word8ArraySlice.base slice")
+                  [ ("()", checkUseAfterFree "free")
+                  , ("(arr,i,n)", "Word8ArraySlice.base slice")
                   , ( "obj"
                     , fficall (restoreOpaqueFunction info)
                         [ ("ctx", "futhark_context")
@@ -547,7 +595,7 @@ struct
                   ]
                   [ "if isnull obj"
                   , "then raise Error (get_error ctx)"
-                  , "else (ctx, obj)"
+                  , "else (ctx, obj, free, ref false)"
                   ]) @ more)
         end
 
@@ -678,6 +726,7 @@ struct
          , ("tuning", "[]")
          ] @ (if gpuBackend backend then [("device", "NONE")] else []))
       val exn_fut = "exception Error of string"
+      val exn_free = "exception Free"
       val entry_specs = map (generateEntrySpec manifest) entry_points
       val entry_defs = List.concat
         (map (generateEntryDef manifest) entry_points)
@@ -700,7 +749,10 @@ struct
         , valspec "version" [] "string"
         , ""
         , typespec "ctx" []
+        , ""
         , exn_fut
+        , exn_free
+        , ""
         , cfg_type
         , ""
         , "structure Config : sig"
@@ -728,8 +780,10 @@ struct
         , valdef "backend" (stringlit backend)
         , valdef "version" (stringlit version)
         , ""
-        , typedef "ctx" [] (record_t [("cfg", pointer), ("ctx", pointer)])
+        , typedef "ctx" []
+            (record_t [("cfg", pointer), ("ctx", pointer), ("free", "bool ref")])
         , exn_fut
+        , exn_free
         , cfg_type
         , typedef "futhark_context_config" [] pointer
         , typedef "futhark_context" [] pointer
@@ -843,31 +897,33 @@ struct
                  [( "c_ctx"
                   , fficall "futhark_context_new"
                       [("c_cfg", "futhark_context_config")] "futhark_context"
-                  )]) ["{cfg=c_cfg, ctx=c_ctx}"])
+                  )]) ["{cfg=c_cfg, ctx=c_ctx, free=ref false}"])
            @
-           fundef "free" ["{cfg,ctx}"]
-             [ "let"
-             , "val () = "
-               ^
-               fficall "futhark_context_free" [("ctx", "futhark_context")]
-                 "unit"
-             , "val () = "
-               ^
-               fficall "futhark_context_config_free"
-                 [("cfg", "futhark_context_config")] "unit"
-             , "in () end"
-             ]
-           @
-           fundef "sync" ["{cfg,ctx}"]
-             [apply "error_check"
-                [ (fficall "futhark_context_sync" [("ctx", "futhark_context")]
-                     "int")
-                , "ctx"
-                ]]
-           @
-           fundef "report" ["{cfg,ctx}"]
+           fundef "free" ["{cfg,ctx,free}"]
              (letbind
-                [ ( "p"
+                [ ("()", checkUseAfterFree "free")
+                , ( "()"
+                  , fficall "futhark_context_free" [("ctx", "futhark_context")]
+                      "unit"
+                  )
+                , ( "()"
+                  , fficall "futhark_context_config_free"
+                      [("cfg", "futhark_context_config")] "unit"
+                  )
+                ] ["free := true"])
+           @
+           fundef "sync" ["{cfg,ctx,free}"]
+             (letbind [("()", checkUseAfterFree "free")]
+                [apply "error_check"
+                   [ (fficall "futhark_context_sync"
+                        [("ctx", "futhark_context")] "int")
+                   , "ctx"
+                   ]])
+           @
+           fundef "report" ["{cfg,ctx,free}"]
+             (letbind
+                [ ("()", checkUseAfterFree "free")
+                , ( "p"
                   , fficall "futhark_context_report"
                       [("ctx", "futhark_context")] pointer
                   )
@@ -875,19 +931,23 @@ struct
                 , ("()", fficall "free" [("p", pointer)] "unit")
                 ] ["s"])
            @
-           fundef "pauseProfiling" ["{cfg,ctx}"]
-             [fficall "futhark_context_pause_profiling"
-                [("ctx", "futhark_context")] "unit"]
+           fundef "pauseProfiling" ["{cfg,ctx,free}"]
+             (letbind [("()", checkUseAfterFree "free")]
+                [fficall "futhark_context_pause_profiling"
+                   [("ctx", "futhark_context")] "unit"])
            @
-           fundef "unpauseProfiling" ["{cfg,ctx}"]
-             [fficall "futhark_context_unpause_profiling"
-                [("ctx", "futhark_context")] "unit"]
+           fundef "unpauseProfiling" ["{cfg,ctx,free}"]
+             (letbind [("()", checkUseAfterFree "free")]
+                [fficall "futhark_context_unpause_profiling"
+                   [("ctx", "futhark_context")] "unit"])
            @
-           fundef "clearCaches" ["{cfg,ctx}"]
-             [fficall "futhark_context_clear_caches"
-                [("ctx", "futhark_context")] "unit"]) @ array_type_defs
-        @ ["structure Opaque = struct"] @ map indent opaque_type_defs @ ["end"]
-        @ ["structure Entry = struct"] @ map indent entry_defs @ ["end"]
+           fundef "clearCaches" ["{cfg,ctx,free}"]
+             (letbind [("()", checkUseAfterFree "free")]
+                [fficall "futhark_context_clear_caches"
+                   [("ctx", "futhark_context")] "unit"])) (*    *)
+        @ array_type_defs @ ["structure Opaque = struct"]
+        @ map indent opaque_type_defs @ ["end"] @ ["structure Entry = struct"]
+        @ map indent entry_defs @ ["end"]
     in
       ( unlines
           (header @ sig_FUTHARK_ARRAY @ [""] @ sig_FUTHARK_OPAQUE @ [""]
@@ -1013,17 +1073,27 @@ in
             parens ("#" ^ Int.toString (i + 1) ^ " shape"))
       val shape_args =
         map (fn x => (apply "Int64.fromInt" [x], "Int64.int")) shape
+      fun wrapCheck ls =
+        letbind
+          [ ("()", checkUseAfterFree "ctx_free")
+          , ("()", checkUseAfterFree "arr_free")
+          ] ls
     in
       structdef (futharkArrayStruct info) NONE
-        ([ typedef "array" [] (tuple_t ["futhark_context", pointer])
+        ([ typedef "array" []
+             (tuple_t ["futhark_context", pointer, "bool ref", "bool ref"])
          , typedef "ctx" [] "ctx"
          , typedef "shape" [] (shapeTypeOfRank rank)
          ] @ defs
          @
          fundef "new"
-           ["{ctx,cfg}", "slice", parens ("shape: " ^ shapeTypeOfRank rank)]
+           [ "{ctx,cfg,free}"
+           , "slice"
+           , parens ("shape: " ^ shapeTypeOfRank rank)
+           ]
            (letbind
-              [ ("(arr,i,n)", "Slice.base slice")
+              [ ("()", checkUseAfterFree "free")
+              , ("(arr,i,n)", "Slice.base slice")
               , ("()", "if " ^ mkProd shape ^ " <> n then raise Size else ()")
               , ( "arr"
                 , fficall (newSyncFunction info)
@@ -1035,41 +1105,49 @@ in
               ]
               [ "if isnull arr"
               , "then raise Error (get_error ctx)"
-              , "else (ctx, arr)"
+              , "else (ctx, arr, free, ref false)"
               ])
          @
-         fundef "free" ["(ctx,data)"]
-           [apply "error_check"
-              [ (fficall (#free ops)
-                   ([("ctx", "futhark_context"), ("data", pointer)]) "int")
-              , "ctx"
-              ]]
-         @ fundef "shape" ["(ctx,data)"] (mkShape fficall pointer info "data")
+         fundef "free" ["(ctx,data,ctx_free,arr_free)"] (wrapCheck
+           [ apply "error_check"
+               [ (fficall (#free ops)
+                    ([("ctx", "futhark_context"), ("data", pointer)]) "int")
+               , "ctx"
+               ]
+           , ";"
+           , "arr_free := true"
+           ])
          @
-         fundef "values_into" ["(ctx, data)", "slice"]
-           (letbind
-              [ ("(arr, i, n)", "Slice.base slice")
-              , ("m", unlines (mkSize fficall pointer info "data"))
-              , ("()", "if n <> m then raise Size else ()")
-              , ( "()"
-                , apply "error_check"
-                    [ fficall (valuesIntoFunction info)
-                        [ ("ctx", "futhark_context")
-                        , ("data", pointer)
-                        , ("arr", data_t)
-                        , (apply "Int64.fromInt" ["i"], "Int64.int")
-                        ] "int"
-                    , "ctx"
-                    ]
-                )
-              ] ["()"])
+         fundef "shape" ["(ctx,data,ctx_free,arr_free)"] (wrapCheck
+           (mkShape fficall pointer info "data"))
          @
-         fundef "values" ["(ctx, data)"]
+         fundef "values_into" ["(ctx,data,ctx_free,arr_free)", "slice"]
+           (wrapCheck
+              (letbind
+                 [ ("(arr, i, n)", "Slice.base slice")
+                 , ("m", unlines (mkSize fficall pointer info "data"))
+                 , ("()", "if n <> m then raise Size else ()")
+                 , ( "()"
+                   , apply "error_check"
+                       [ fficall (valuesIntoFunction info)
+                           [ ("ctx", "futhark_context")
+                           , ("data", pointer)
+                           , ("arr", data_t)
+                           , (apply "Int64.fromInt" ["i"], "Int64.int")
+                           ] "int"
+                       , "ctx"
+                       ]
+                   )
+                 ] ["()"]))
+         @
+         fundef "values" ["(ctx,data,ctx_free,arr_free)"] (wrapCheck
            (letbind
               [ ("n", unlines (mkSize fficall pointer info "data"))
               , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
-              , ("()", "values_into (ctx, data) (Slice.full out)")
-              ] ["out"]))
+              , ( "()"
+                , "values_into (ctx,data,ctx_free,arr_free) (Slice.full out)"
+                )
+              ] ["out"])))
     end
 end
 

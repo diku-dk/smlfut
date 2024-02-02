@@ -113,6 +113,7 @@ sig
 
   type ctx
   exception Error of string
+  exception Free of string
   type cfg = { logging:bool,
              , debugging:bool
              , profiling:bool
@@ -149,6 +150,8 @@ The Futhark compiler version used to compile the program.
 .It Li exception Error
 Raised when Futhark execution fails.  The string is the error message
 reported by Futhark.
+.It Li exception Free
+Raised when an attempt is is made to use an object that has been freed.
 .It Li type ctx
 Contains Futhark runtime state.
 .It Li type cfg

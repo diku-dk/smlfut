@@ -2,6 +2,11 @@
 
 All user-visible changes are noted here.
 
+## [1.4.0]
+
+* Using an object after it has been freed now causes the exception
+  `Free` to be raised, rather than corrupting memory.
+
 ## [1.3.0]
 
 * Opaque types now support `store`/`restore` functions.

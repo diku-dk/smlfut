@@ -47,7 +47,9 @@ fun test_i32 ctx =
     if Int32ArrayTest.toList arr_sml <> [3, 4, 5, 1, 2, 3] then
       raise Fail "Unexpected result"
     else
-      ()
+      ();
+    (Futhark.Int32Array1.free arr_in; raise Fail "Allowed to use freed array")
+    handle Futhark.Free => ()
   end
 
 
@@ -113,7 +115,11 @@ fun test_store ctx =
     val {a, b} = Futhark.Opaque.record.values record
   in
     if a <> 2 orelse b <> true then raise Fail "Unexpected result." else ();
-    Futhark.Opaque.record.free record
+    Futhark.Opaque.record.free record;
+    ( Futhark.Opaque.record.free record
+    ; raise Fail "Allowed to use freed record"
+    )
+    handle Futhark.Free => ()
   end
 
 fun test_sum ctx =
@@ -154,5 +160,8 @@ val () =
 
     test ctx "test_sum" test_sum;
 
-    Futhark.Context.free ctx
+    Futhark.Context.free ctx;
+
+    ((test_i32 ctx; raise Fail "Allowed to use freed context")
+     handle Futhark.Free => ())
   end
