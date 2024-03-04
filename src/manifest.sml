@@ -9,7 +9,13 @@ type array_info =
   { ctype: string
   , elemtype: string
   , rank: int
-  , ops: {free: string, new: string, shape: string, values: string}
+  , ops: { free: string
+         , new: string
+         , new_raw: string
+         , shape: string
+         , values: string
+         , values_raw: string
+         }
   }
 
 type field = string * {project: string, type_: string}
@@ -110,6 +116,8 @@ local
     , new = lookString obj "new"
     , shape = lookString obj "shape"
     , values = lookString obj "values"
+    , values_raw = lookString obj "values_raw"
+    , new_raw = lookString obj "new_raw"
     }
 
   fun opaqueOps obj =

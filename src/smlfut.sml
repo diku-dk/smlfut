@@ -7,11 +7,14 @@ val sig_FUTHARK_POLY_ARRAY =
   , "  type ctx"
   , "  type shape"
   , "  type elem"
+  , "  type raw"
   , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
   , "  val free: array -> unit"
   , "  val shape: array -> shape"
   , "  val values: array -> elem Array.array"
   , "  val values_into: array -> elem ArraySlice.slice -> unit"
+  , "  val new_raw: ctx -> raw -> shape -> array"
+  , "  val values_raw: array -> raw"
   , "end"
   ]
 
@@ -21,6 +24,7 @@ val sig_FUTHARK_MONO_ARRAY =
   , "  type array"
   , "  type ctx"
   , "  type shape"
+  , "  type raw"
   , "  structure Array : MONO_ARRAY"
   , "  structure Slice : MONO_ARRAY_SLICE"
   , "  val new: ctx -> Slice.slice -> shape -> array"
@@ -28,6 +32,8 @@ val sig_FUTHARK_MONO_ARRAY =
   , "  val shape: array -> shape"
   , "  val values: array -> Array.array"
   , "  val values_into: array -> Slice.slice -> unit"
+  , "  val new_raw: ctx -> raw -> shape -> array"
+  , "  val values_raw: array -> raw"
   , "end"
   ]
 
@@ -1021,6 +1027,7 @@ struct
     , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
     , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
     , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
+    , "  and type raw = MLton.Pointer.t"
     ]
 end
 
@@ -1032,6 +1039,7 @@ struct
     , "where type ctx = ctx"
     , "  and type shape = " ^ shapeTypeOfRank (#rank info)
     , "  and type elem = " ^ primTypeToSML (#elemtype info)
+    , "  and type raw = MLton.Pointer.t"
     ]
   fun smlArrayType (info: array_info) =
     primTypeToSML (#elemtype info) ^ " Array.array"
@@ -1079,9 +1087,11 @@ local
       [tuple_e (List.tabulate (#rank info, fn i =>
          apply "Int64.toInt"
            [apply "Int64Array.sub" ["shape_ml", Int.toString i]]))]
+
+
 in
-  fun futharkArrayStructDef fficall pointer null defs (data_t: string) manifest
-    (info as {ctype, rank, elemtype, ops}) =
+  fun futharkArrayStructDef fficall pointer null defs (data_t: string)
+    (manifest as MANIFEST {backend, ...}) (info as {ctype, rank, elemtype, ops}) =
     let
       val shape =
         if rank = 1 then
@@ -1089,19 +1099,23 @@ in
         else
           List.tabulate (rank, fn i =>
             parens ("#" ^ Int.toString (i + 1) ^ " shape"))
-      val shape_args =
-        map (fn x => (apply "Int64.fromInt" [x], "Int64.int")) shape
+
       fun wrapCheck ls =
         letbind
           [ ("()", checkUseAfterFree "ctx_free")
           , ("()", checkUseAfterFree "arr_free")
           ] ls
+
+
+      val shape_args =
+        map (fn x => (apply "Int64.fromInt" [x], "Int64.int")) shape
     in
       structdef (futharkArrayStruct info) NONE
         ([ typedef "array" []
              (tuple_t ["futhark_context", pointer, "bool ref", "bool ref"])
          , typedef "ctx" [] "ctx"
          , typedef "shape" [] (shapeTypeOfRank rank)
+         , typedef "raw" [] pointer
          ] @ defs
          @
          fundef "new"
@@ -1165,7 +1179,38 @@ in
               , ( "()"
                 , "values_into (ctx,data,ctx_free,arr_free) (Slice.full out)"
                 )
-              ] ["out"])))
+              ] ["out"]))
+         @
+         (case backend of
+            "opencl" =>
+              fundef "values_raw" ["_"]
+                ["raise Fail \"Not supported for this backend.\""]
+              @
+              fundef "new_raw" ["_", "_", "_"]
+                ["raise Fail \"Not supported for this backend.\""]
+          | _ =>
+              fundef "values_raw" ["(ctx,data,ctx_free,arr_free)"] (wrapCheck
+                [fficall (#values_raw (#ops info))
+                   [("ctx", "futhark_context"), ("data", pointer)] pointer])
+              @
+              fundef "new_raw"
+                [ "{ctx,cfg,free}"
+                , "data"
+                , parens ("shape: " ^ shapeTypeOfRank rank)
+                ]
+                (letbind
+                   [ ("()", checkUseAfterFree "free")
+                   , ( "arr"
+                     , fficall (#new_raw (#ops info))
+                         ([("ctx", "futhark_context"), ("data", pointer)]
+                          @ shape_args) pointer
+                     )
+                   ]
+                   [ "if isnull arr"
+                   , "then raise Error (get_error ctx)"
+                   , "else (ctx, arr, free, ref false)"
+                   ])))
+
     end
 end
 
