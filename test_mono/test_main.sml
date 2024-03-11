@@ -29,9 +29,12 @@ structure Real64ArrayTest =
 fun printArray app toString arr =
   (print "["; app (fn x => print (toString x ^ " ")) arr; print "]\n")
 
+val status = ref OS.Process.success
+
 fun test ctx name f =
   f ctx
-  handle Fail s => print (name ^ " failed: " ^ s ^ "\n")
+  handle Fail s =>
+    (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
 
 fun test_i32 ctx =
   let
@@ -140,6 +143,30 @@ fun test_sum ctx =
     Futhark.Opaque.sum_opaque.free sum_next
   end
 
+(* On on a GPU backend, this is only expected to work with unified
+memory is enabled. *)
+fun test_raw ctx =
+  let
+    val arr_in =
+      Futhark.Int32Array1.new ctx
+        (Int32ArraySlice.full (Int32Array.fromList [1, 2, 3])) 3
+    val arr_raw = Futhark.Int32Array1.values_raw arr_in
+    val x = MLton.Pointer.getInt32 (arr_raw, 0)
+    val () =
+      if x <> 1 then raise Fail ("Unexpected value: " ^ Int32.toString x)
+      else ()
+    val () = MLton.Pointer.setInt32 (arr_raw, 0, 42) (* Naughty. *)
+    val arr_sml = Futhark.Int32Array1.values arr_in
+    val () =
+      if Int32ArrayTest.toList arr_sml <> [42, 2, 3] then
+        raise Fail "Unexpected result"
+      else
+        ()
+    val () = Futhark.Int32Array1.free arr_in
+  in
+    ()
+  end
+
 val () =
   let
     val ctx = Futhark.Context.new
@@ -160,8 +187,12 @@ val () =
 
     test ctx "test_sum" test_sum;
 
+    test ctx "test_raw" test_raw;
+
     Futhark.Context.free ctx;
 
     ((test_i32 ctx; raise Fail "Allowed to use freed context")
-     handle Futhark.Free => ())
+     handle Futhark.Free => ());
+
+    OS.Process.exit (!status)
   end
