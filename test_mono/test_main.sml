@@ -147,22 +147,31 @@ fun test_sum ctx =
 memory is enabled. *)
 fun test_raw ctx =
   let
-    val arr_in =
+    val arr1 =
       Futhark.Int32Array1.new ctx
         (Int32ArraySlice.full (Int32Array.fromList [1, 2, 3])) 3
-    val arr_raw = Futhark.Int32Array1.values_raw arr_in
-    val x = MLton.Pointer.getInt32 (arr_raw, 0)
+    val arr1_raw = Futhark.Int32Array1.values_raw arr1
+    val x = MLton.Pointer.getInt32 (arr1_raw, 0)
     val () =
       if x <> 1 then raise Fail ("Unexpected value: " ^ Int32.toString x)
       else ()
-    val () = MLton.Pointer.setInt32 (arr_raw, 0, 42) (* Naughty. *)
-    val arr_sml = Futhark.Int32Array1.values arr_in
+    val () = MLton.Pointer.setInt32 (arr1_raw, 0, 42) (* Naughty. *)
+    val arr1_sml = Futhark.Int32Array1.values arr1
     val () =
-      if Int32ArrayTest.toList arr_sml <> [42, 2, 3] then
-        raise Fail "Unexpected result"
+      if Int32ArrayTest.toList arr1_sml <> [42, 2, 3] then
+        raise Fail "Unexpected result for arr1_sml"
       else
         ()
-    val () = Futhark.Int32Array1.free arr_in
+    (* arr1 and arr2 will share memory. *)
+    val arr2 = Futhark.Int32Array1.new_raw ctx arr1_raw 3
+    val arr2_sml = Futhark.Int32Array1.values arr2
+    val () =
+      if Int32ArrayTest.toList arr2_sml <> [42, 2, 3] then
+        raise Fail "Unexpected result for arr2_sml"
+      else
+        ()
+    val () = Futhark.Int32Array1.free arr2
+    val () = Futhark.Int32Array1.free arr1
   in
     ()
   end
