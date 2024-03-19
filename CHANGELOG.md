@@ -4,6 +4,8 @@ All user-visible changes are noted here.
 
 ## [1.4.0]
 
+* Arrays modules now have `new_raw`
+
 * Using an object after it has been freed now causes the exception
   `Free` to be raised, rather than corrupting memory.
 

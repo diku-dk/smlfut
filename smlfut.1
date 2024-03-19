@@ -280,6 +280,7 @@ sig
   type array
   type ctx
   type shape
+  type raw
   structure Array : MONO_ARRAY
   structure Slice : MONO_ARRAY_SLICE
   val new: ctx -> Slice.slice -> shape -> array
@@ -287,6 +288,8 @@ sig
   val shape: array -> shape
   val values: array -> native.array
   val values_into: array -> Slice.slice -> unit
+  val new_raw: ctx -> raw -> shape -> array
+  val values_raw: array -> raw
 end
 
 signature FUTHARK_POLY_ARRAY =
@@ -295,11 +298,14 @@ sig
   type ctx
   type shape
   type elem
+  type raw
   val new: ctx -> elem ArraySlice.slice -> shape -> array
   val free: array -> unit
   val shape: array -> shape
   val values: array -> elem Array.array
   val values_into: array -> elem ArraySlice.slice -> unit
+  val new_raw: ctx -> raw -> shape -> array
+  val values_raw: array -> raw
 end
 .Ed
 .Pp
@@ -331,6 +337,8 @@ Construct a Futhark array from an SML array slice.  Raises
 .Li Size
 if the length of the array slice is not equal to the product of the
 provided shape.
+.It Li raw
+The type of the raw underlying pointer corresponding to the array memory.
 .It Li free
 Frees the array. Do not use it again. If you do not manually call this
 function when you are done with the array, then you leak memory.
@@ -341,6 +349,12 @@ Synchronously copy the Futhark array into an existing SML array slice.  Raises
 .Li Size
 if the length of the slice is not equal to the product of the array
 shape.
+.It Li new_raw
+Construct an array from a raw pointer, without copying. Futhark does
+not take ownership of this memory, and it must not be freed until
+Futhark no longer uses it.
+.It Li values_raw
+Retrieve a pointer to the raw data underlying this array.
 .El
 .
 .Sh Opaque types
