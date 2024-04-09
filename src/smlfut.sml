@@ -624,7 +624,7 @@ struct
           , ""
           , " void* " ^ restore
             ^ "(void* ctx, const unsigned char* p, size_t offset) {"
-          , "  " ^ #restore (#ops opaque) ^ "(ctx, p + offset);"
+          , "  return " ^ #restore (#ops opaque) ^ "(ctx, p + offset);"
           , "}"
           ]
         end
