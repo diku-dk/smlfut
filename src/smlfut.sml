@@ -1019,7 +1019,7 @@ struct
   fun smlArrayType (info: array_info) =
     primTypeToSML (#elemtype info) ^ " Array.array"
   fun smlArrayType info = monoArrayModule info ^ ".array"
-  fun futharkArrayStructSpec (info: array_info) =
+  fun futharkArrayStructSpec pointer (info: array_info) =
     [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
     , "where type ctx = ctx"
     , "  and type shape = " ^ shapeTypeOfRank (#rank info)
@@ -1027,19 +1027,19 @@ struct
     , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
     , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
     , "  and type Slice.elem = " ^ smlArraySliceModule info ^ ".elem"
-    , "  and type raw = MLton.Pointer.t"
+    , "  and type raw = " ^ pointer
     ]
 end
 
 structure PolyDefs =
 struct
   val sig_FUTHARK_ARRAY = sig_FUTHARK_POLY_ARRAY
-  fun futharkArrayStructSpec (info: array_info) =
+  fun futharkArrayStructSpec pointer (info: array_info) =
     [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
     , "where type ctx = ctx"
     , "  and type shape = " ^ shapeTypeOfRank (#rank info)
     , "  and type elem = " ^ primTypeToSML (#elemtype info)
-    , "  and type raw = MLton.Pointer.t"
+    , "  and type raw = " ^ pointer
     ]
   fun smlArrayType (info: array_info) =
     primTypeToSML (#elemtype info) ^ " Array.array"
@@ -1246,6 +1246,7 @@ in
       (struct
          open MonoDefs
          open MLtonDefs
+         val futharkArrayStructSpec = futharkArrayStructSpec pointer
          val futharkArrayStructDef = fn manifest =>
            fn info =>
              futharkArrayStructDef fficall pointer null
@@ -1259,6 +1260,7 @@ in
       (struct
          open PolyDefs
          open MLtonDefs
+         val futharkArrayStructSpec = futharkArrayStructSpec pointer
          val futharkArrayStructDef = fn manifest =>
            fn info =>
              futharkArrayStructDef fficall pointer null
@@ -1285,6 +1287,7 @@ structure MLKit =
             ^ " : " ^ ret)
 
        val util_defs = []
+       val futharkArrayStructSpec = futharkArrayStructSpec pointer
        val futharkArrayStructDef = fn manifest =>
          fn info =>
            futharkArrayStructDef fficall pointer null
