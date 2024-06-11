@@ -40,11 +40,19 @@ run_test_mlton_mono: test_mlton_mono/test
 run_test_mlkit: test_mlkit/test
 	cd test_mlkit && ./test
 
+test_polyml/test: test/test.json test_polyml/test_main.sml test_polyml/test.sml
+	cd test_polyml && gcc -c ../test/test.c test.smlfut.c
+	cd test_polyml && polyc -c test_main.sml
+	cd test_polyml && gcc -o test test_main.o test.o test.smlfut.o -lpolyml -lpolymain -Wl,--export-dynamic
+
+run_test_polyml: test_polyml/test
+	cd test_polyml && ./test
+
 run_test: run_test_mlton_poly run_test_mlton_mono run_test_mlkit
 
 smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf
 
 clean:
-	find src test_mlton_poly test_mlton_mono test_mlkit -name MLB -exec rm -rf {} \;
+	find src test_mlton_poly test_mlton_mono test_mlkit test_polyml -name MLB -exec rm -rf {} \;
 	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml test_*/*.c

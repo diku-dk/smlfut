@@ -1297,7 +1297,19 @@ structure MLKit =
 
      end)
 
-datatype target = MLTON_MONO | MLTON_POLY | MLKIT
+structure PolyML =
+  Smlfut
+    (struct
+       open PolyDefs
+       val pointer = "Foreign.Memory.voidStar"
+       fun fficall cfun args ret = raise Fail "fficall"
+       val util_defs = []
+       val futharkArrayStructSpec = futharkArrayStructSpec pointer
+       val futharkArrayStructDef = fn manifest =>
+         fn info => raise Fail "futharkArrayStructDef"
+     end)
+
+datatype target = MLTON_MONO | MLTON_POLY | MLKIT | POLYML
 
 val signature_opt: string option ref = ref NONE
 val structure_opt: string option ref = ref NONE
@@ -1404,6 +1416,7 @@ fun main () =
             MLTON_MONO => MLtonMono.generate
           | MLTON_POLY => MLtonPoly.generate
           | MLKIT => MLKit.generate
+          | POLYML => PolyML.generate
         val (sig_s, struct_s, c_s) = generate sig_name struct_name m
       in
         checkValidName sig_name;
