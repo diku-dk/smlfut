@@ -14,11 +14,11 @@ smlfut: src/smlfut.mlb src/*.sml
 test/test.json: test/test.fut
 	$(FUTHARK) $(FUTHARK_BACKEND) --library $<
 
-test_poly/test.sml: test/test.json smlfut
-	./smlfut --poly-arrays test/test.json -o test_poly
+test_mlton_poly/test.sml: test/test.json smlfut
+	./smlfut --poly-arrays test/test.json -o test_mlton_poly
 
-test_mono/test.sml: test/test.json smlfut
-	./smlfut --mono-arrays test/test.json -o test_mono
+test_mlton_mono/test.sml: test/test.json smlfut
+	./smlfut --mono-arrays test/test.json -o test_mlton_mono
 
 test_mlkit/test.sml: test/test.json smlfut
 	./smlfut --target=mlkit test/test.json -o test_mlkit
@@ -31,20 +31,20 @@ test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml
 %/test: test/test.json %/test_main.sml %/test.sml
 	$(MLTON) $(MLTONFLAGS) $*/test.mlb test/test.c $*/test.smlfut.c
 
-run_test_poly: test_poly/test
-	cd test_poly && ./test
+run_test_mlton_poly: test_mlton_poly/test
+	cd test_mlton_poly && ./test
 
-run_test_mono: test_mono/test
-	cd test_mono && ./test
+run_test_mlton_mono: test_mlton_mono/test
+	cd test_mlton_mono && ./test
 
 run_test_mlkit: test_mlkit/test
 	cd test_mlkit && ./test
 
-run_test: run_test_poly run_test_mono run_test_mlkit
+run_test: run_test_mlton_poly run_test_mlton_mono run_test_mlkit
 
 smlfut.pdf: smlfut.1
 	groff -Tpdf -m mdoc ./smlfut.1 > smlfut.pdf
 
 clean:
-	find src test_poly test_mono test_mlkit -name MLB -exec rm -rf {} \;
+	find src test_mlton_poly test_mlton_mono test_mlkit -name MLB -exec rm -rf {} \;
 	rm -rf MLB smlfut test/test.c test/test.h test/test.json test/test.sig test/test.sml test_*/*.c
