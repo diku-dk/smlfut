@@ -622,7 +622,7 @@ struct
           , ""
           , "void* " ^ #restore (#ops opaque) ^ "(void* ctx, const void* p);"
           , ""
-          , " void* " ^ restore
+          , "void* " ^ restore
             ^ "(void* ctx, const unsigned char* p, size_t offset) {"
           , "  return " ^ #restore (#ops opaque) ^ "(ctx, p + offset);"
           , "}"
