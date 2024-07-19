@@ -3,7 +3,12 @@ type input = {name: string, type_: string, unique: bool}
 type output = {type_: string, unique: bool}
 
 datatype entry_point =
-  entry_point of {cfun: string, inputs: input list, outputs: output list}
+  entry_point of
+    { cfun: string
+    , inputs: input list
+    , outputs: output list
+    , tuning_params: string list
+    }
 
 type array_info =
   { ctype: string
@@ -106,6 +111,7 @@ local
             { cfun = lookString obj "cfun"
             , inputs = map inputFromJSON (lookArray obj "inputs")
             , outputs = map outputFromJSON (lookArray obj "outputs")
+            , tuning_params = map stringFromJSON (lookArray obj "tuning_params")
             }
         )
     | entryPointFromJSON _ =

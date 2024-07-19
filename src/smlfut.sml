@@ -271,7 +271,8 @@ struct
       | NONE => primTypeToSML t
     end
 
-  fun generateEntrySpec manifest (name, entry_point {cfun, inputs, outputs}) =
+  fun generateEntrySpec manifest
+    (name, entry_point {cfun, inputs, outputs, tuning_params}) =
     valspec name ["ctx", tuple_t (map (typeToSML manifest o #type_) inputs)]
       (tuple_t (map (typeToSML manifest o #type_) outputs))
 
@@ -290,7 +291,7 @@ struct
       ["if err = 0 then () else raise Error (get_error(ctx))"]
 
   fun generateEntryDef manifest
-    (name, ep as entry_point {cfun, inputs, outputs}) =
+    (name, ep as entry_point {cfun, inputs, outputs, tuning_params}) =
     let
       fun inpParams i [] = []
         | inpParams i ({name = _, type_, unique = _} :: rest) =
