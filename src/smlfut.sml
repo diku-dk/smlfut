@@ -352,12 +352,12 @@ struct
     | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
         origNameComment name
         @
-        (case (#record info, #sum info) of
-           (NONE, NONE) =>
+        (case #extra info of
+           NONE =>
              [ structspec (escapeName name) "FUTHARK_OPAQUE"
              , "where type ctx = ctx"
              ]
-         | (SOME record, _) =>
+         | SOME (OPAQUE_RECORD record) =>
              let
                fun fieldType (name, {project, type_}) =
                  (name, typeToSMLInside manifest type_)
@@ -368,7 +368,7 @@ struct
                  ^ record_t (map fieldType (#fields record))
                ]
              end
-         | (_, SOME sum) =>
+         | SOME (OPAQUE_SUM sum) =>
              [structspec name "", "sig"] @ sumDef manifest name sum
              @
              [ "include FUTHARK_SUM"
@@ -397,9 +397,9 @@ struct
               , ("()", checkUseAfterFree "obj_free")
               ] ls
           val more =
-            case (#record info, #sum info) of
-              (NONE, NONE) => []
-            | (SOME record, _) =>
+            case #extra info of
+              NONE => []
+            | SOME (OPAQUE_RECORD record) =>
                 let
                   fun getField (name, {project, type_}) =
                     ( name
@@ -462,7 +462,7 @@ struct
                        , valFromPtrArr "out"
                        ])
                 end
-            | (_, SOME sum) =>
+            | SOME (OPAQUE_SUM sum) =>
                 let
                   fun payload i = "v" ^ Int.toString i
                   fun payloadArg i t =
@@ -685,12 +685,13 @@ struct
                 | NONE => isSome (List.find (fn x => x = v) known)
               fun usesKnown
                     ( name
-                    , FUTHARK_OPAQUE {ctype, ops, record = SOME record, sum = _}
+                    , FUTHARK_OPAQUE
+                        {ctype, ops, extra = SOME (OPAQUE_RECORD record)}
                     ) =
                     List.all (isKnown o #type_ o #2) (#fields record)
                 | usesKnown
                     ( name
-                    , FUTHARK_OPAQUE {ctype, ops, sum = SOME sum, record = _}
+                    , FUTHARK_OPAQUE {ctype, ops, extra = SOME (OPAQUE_SUM sum)}
                     ) =
                     List.all (List.all isKnown o #payload o #2) (#variants sum)
                 | usesKnown _ = true

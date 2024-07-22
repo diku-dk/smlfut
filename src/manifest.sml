@@ -32,11 +32,12 @@ type variant =
 
 type sum = {variants: variant list, variant: string}
 
+datatype opaque_extra = OPAQUE_RECORD of record | OPAQUE_SUM of sum
+
 type opaque_info =
   { ctype: string
   , ops: {free: string, store: string, restore: string}
-  , record: record option
-  , sum: sum option
+  , extra: opaque_extra option
   }
 
 datatype futhark_type =
@@ -163,26 +164,23 @@ local
               FUTHARK_OPAQUE
                 { ctype = lookString obj "ctype"
                 , ops = opaqueOps (lookObj obj "ops")
-                , record =
-                    case Json.objLook obj "record" of
-                      NONE => NONE
-                    | SOME (Json.OBJECT robj) =>
-                        SOME
+                , extra =
+                    case (Json.objLook obj "record", Json.objLook obj "sum") of
+                      (SOME (Json.OBJECT robj), _) =>
+                        SOME (OPAQUE_RECORD
                           { new = lookString robj "new"
                           , fields = (map fieldFromJSON
                               (lookArray robj "fields"))
-                          }
-                    | SOME _ => raise Fail "Invalid record in manifest."
-                , sum =
-                    case Json.objLook obj "sum" of
-                      NONE => NONE
-                    | SOME (Json.OBJECT sobj) =>
-                        SOME
+                          })
+                    | (SOME _, _) => raise Fail "Invalid record in manifest."
+                    | (_, SOME (Json.OBJECT sobj)) =>
+                        SOME (OPAQUE_SUM
                           { variant = lookString sobj "variant"
                           , variants = map variantFromJSON
                               (lookArray sobj "variants")
-                          }
-                    | SOME _ => raise Fail "Invalid record in manifest."
+                          })
+                    | (_, SOME _) => raise Fail "Invalid record in manifest."
+                    | _ => NONE
                 }
           | kind => raise Fail ("Cannot handle type of kind: " ^ kind)
         )
