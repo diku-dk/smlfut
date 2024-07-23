@@ -29,13 +29,6 @@ structure Real64ArrayTest =
 fun printArray app toString arr =
   (print "["; app (fn x => print (toString x ^ " ")) arr; print "]\n")
 
-val status = ref OS.Process.success
-
-fun test ctx name f =
-  f ctx
-  handle Fail s =>
-    (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
-
 fun test_i32 ctx =
   let
     val arr_in =
@@ -141,7 +134,7 @@ fun test_sum ctx =
     Futhark.Opaque.sum_opaque.free sum_next
   end
 
-(* On on a GPU backend, this is only expected to work with unified
+(* On on a GPU backend, this is only expected to work when unified
 memory is enabled. *)
 fun test_raw ctx =
   let
@@ -173,6 +166,13 @@ fun test_raw ctx =
   in
     ()
   end
+
+val status = ref OS.Process.success
+
+fun test ctx name f =
+  f ctx
+  handle Fail s =>
+    (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
 
 val () =
   let

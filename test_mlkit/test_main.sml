@@ -29,10 +29,6 @@ structure Real64ArrayTest =
 fun printArray app toString arr =
   (print "["; app (fn x => print (toString x ^ " ")) arr; print "]\n")
 
-fun test ctx name f =
-  f ctx
-  handle Fail s => print (name ^ " failed: " ^ s ^ "\n")
-
 fun test_i32 ctx =
   let
     val arr_in =
@@ -50,7 +46,6 @@ fun test_i32 ctx =
     else
       ()
   end
-
 
 fun test_f64 ctx =
   let
@@ -114,8 +109,37 @@ fun test_store ctx =
     val {a, b} = Futhark.Opaque.record.values record
   in
     if a <> 2 orelse b <> true then raise Fail "Unexpected result." else ();
-    Futhark.Opaque.record.free record
+    Futhark.Opaque.record.free record;
+    ( Futhark.Opaque.record.free record
+    ; raise Fail "Allowed to use freed record"
+    )
+    handle Futhark.Free => ()
   end
+
+fun test_sum ctx =
+  let
+    val sum =
+      Futhark.Opaque.sum_opaque.new ctx (Futhark.Opaque.sum_opaque.foo 2)
+    val n = Futhark.Entry.sum_opaque_size ctx sum
+    val sum_next = Futhark.Entry.sum_opaque_rot ctx sum
+    val m = Futhark.Entry.sum_opaque_size ctx sum_next
+  in
+    if n <> 0 then raise Fail ("Unexpected n: " ^ Int.toString n) else ();
+    if m <> 10 then raise Fail ("Unexpected m: " ^ Int.toString m) else ();
+    (case Futhark.Opaque.sum_opaque.values sum_next of
+       Futhark.Opaque.sum_opaque.foo _ => raise Fail "Unexpected foo"
+     | Futhark.Opaque.sum_opaque.baz _ => raise Fail "Unexpected baz"
+     | Futhark.Opaque.sum_opaque.bar r => Futhark.Opaque.record.free r);
+    Futhark.Opaque.sum_opaque.free sum;
+    Futhark.Opaque.sum_opaque.free sum_next
+  end
+
+val status = ref OS.Process.success
+
+fun test ctx name f =
+  f ctx
+  handle Fail s =>
+    (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
 
 val () =
   let
@@ -133,7 +157,14 @@ val () =
 
     test ctx "test_record" test_record;
 
-    test ctx "test_store" test_record;
+    test ctx "test_store" test_store;
 
-    Futhark.Context.free ctx
+    test ctx "test_sum" test_sum;
+
+    Futhark.Context.free ctx;
+
+    ((test_i32 ctx; raise Fail "Allowed to use freed context")
+     handle Futhark.Free => ());
+
+    OS.Process.exit (!status)
   end
