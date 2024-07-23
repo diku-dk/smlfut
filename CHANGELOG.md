@@ -2,6 +2,12 @@
 
 All user-visible changes are noted here.
 
+## [1.5.0]
+
+* Futhark tuples not work properly.
+
+* The array signatures now support an `index` function.
+
 ## [1.4.0]
 
 * Arrays modules now have `new_raw` and `values_raw` functions.
