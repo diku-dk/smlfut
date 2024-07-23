@@ -34,6 +34,9 @@ fun tuple_t [x] = x
   | tuple_t [] = "unit"
   | tuple_t xs = punctuate " * " xs
 
+fun project f x =
+  "#" ^ Int.toString f ^ parens x
+
 fun apply f args =
   f ^ parens (punctuate ", " args)
 

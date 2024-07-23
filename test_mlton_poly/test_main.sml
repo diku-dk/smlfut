@@ -27,18 +27,18 @@ fun test_i32 ctx =
   let
     val arr_in =
       Futhark.Int32Array1.new ctx (ArraySlice.full (Array.fromList [1, 2, 3])) 3
+    val x = Futhark.Int32Array1.index arr_in 1
     val arr_out = Futhark.Entry.array_i32 ctx arr_in
     val arr_sml = Futhark.Int32Array1.values arr_out
     val () = Futhark.Context.sync ctx
     val () = Futhark.Int32Array1.free arr_in
     val () = Futhark.Int32Array1.free arr_out
   in
-    if arrayToList arr_sml <> [3, 4, 5, 1, 2, 3] then
+    if x <> 2 orelse arrayToList arr_sml <> [3, 4, 5, 1, 2, 3] then
       raise Fail "Unexpected result"
     else
       ()
   end
-
 
 fun test_f64 ctx =
   let

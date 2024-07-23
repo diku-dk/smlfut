@@ -18,6 +18,7 @@ type array_info =
          , new: string
          , new_raw: string
          , shape: string
+         , index: string
          , values: string
          , values_raw: string
          }
@@ -122,6 +123,7 @@ local
     { free = lookString obj "free"
     , new = lookString obj "new"
     , shape = lookString obj "shape"
+    , index = lookString obj "index"
     , values = lookString obj "values"
     , values_raw = lookString obj "values_raw"
     , new_raw = lookString obj "new_raw"

@@ -6,11 +6,13 @@ val sig_FUTHARK_POLY_ARRAY =
   , "  type array"
   , "  type ctx"
   , "  type shape"
+  , "  type index"
   , "  type elem"
   , "  type raw"
   , "  val new: ctx -> elem ArraySlice.slice -> shape -> array"
   , "  val free: array -> unit"
   , "  val shape: array -> shape"
+  , "  val index: array -> index -> elem"
   , "  val values: array -> elem Array.array"
   , "  val values_into: array -> elem ArraySlice.slice -> unit"
   , "  val new_raw: ctx -> raw -> shape -> array"
@@ -24,12 +26,14 @@ val sig_FUTHARK_MONO_ARRAY =
   , "  type array"
   , "  type ctx"
   , "  type shape"
+  , "  type index"
   , "  type raw"
   , "  structure Array : MONO_ARRAY"
   , "  structure Slice : MONO_ARRAY_SLICE"
   , "  val new: ctx -> Slice.slice -> shape -> array"
   , "  val free: array -> unit"
   , "  val shape: array -> shape"
+  , "  val index: array -> index -> Array.elem"
   , "  val values: array -> Array.array"
   , "  val values_into: array -> Slice.slice -> unit"
   , "  val new_raw: ctx -> raw -> shape -> array"
@@ -179,6 +183,20 @@ fun blankRef manifest t =
 
 
 fun checkUseAfterFree free = "if !" ^ free ^ " then raise Free else ()"
+
+fun boundsCheck 1 index shape =
+      "if " ^ index ^ " >= 0 andalso " ^ index ^ " < " ^ shape
+      ^ " then () else raise Subscript"
+  | boundsCheck rank index shape =
+      let
+        val check = punctuate " andalso " (List.tabulate (rank, fn i =>
+          project (i + 1) index ^ " >= 0 andalso " ^ project (i + 1) index
+          ^ " < " ^ project (i + 1) shape))
+      in
+        "if " ^ check ^ " then () else raise Subscript"
+      end
+
+fun intToInt64 x = apply "Int64.fromInt" [x]
 
 signature TARGET =
 sig
@@ -596,7 +614,7 @@ struct
                     , fficall (restoreOpaqueFunction info)
                         [ ("ctx", "futhark_context")
                         , ("arr", "Word8Array.array")
-                        , ("Int64.fromInt i", "Int64.int")
+                        , (intToInt64 "i", "Int64.int")
                         ] pointer
                     )
                   ]
@@ -1025,6 +1043,7 @@ struct
     [ structspec (futharkArrayStruct info) "FUTHARK_MONO_ARRAY"
     , "where type ctx = ctx"
     , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+    , "  and type index = " ^ shapeTypeOfRank (#rank info)
     , "  and type Array.array = " ^ monoArrayModule info ^ ".array"
     , "  and type Array.elem = " ^ monoArrayModule info ^ ".elem"
     , "  and type Slice.slice = " ^ smlArraySliceModule info ^ ".slice"
@@ -1040,6 +1059,7 @@ struct
     [ structspec (futharkArrayStruct info) "FUTHARK_POLY_ARRAY"
     , "where type ctx = ctx"
     , "  and type shape = " ^ shapeTypeOfRank (#rank info)
+    , "  and type index = " ^ shapeTypeOfRank (#rank info)
     , "  and type elem = " ^ primTypeToSML (#elemtype info)
     , "  and type raw = " ^ pointer
     ]
@@ -1061,7 +1081,7 @@ local
         , fficall "smlfut_memcpy"
             [ ("shape_ml", "Int64Array.array")
             , ("shape_c", pointer)
-            , (apply "Int64.fromInt" ["r*8"], "Int64.int")
+            , (intToInt64 "r*8", "Int64.int")
             ] pointer
         )
       ]
@@ -1082,14 +1102,13 @@ local
         , fficall "smlfut_memcpy"
             [ ("shape_ml", "Int64Array.array")
             , ("shape_c", pointer)
-            , (apply "Int64.fromInt" ["r*8"], "Int64.int")
+            , (intToInt64 "r*8", "Int64.int")
             ] pointer
         )
       ]
       [tuple_e (List.tabulate (#rank info, fn i =>
          apply "Int64.toInt"
            [apply "Int64Array.sub" ["shape_ml", Int.toString i]]))]
-
 
 in
   fun futharkArrayStructDef fficall pointer null defs (data_t: string)
@@ -1117,6 +1136,7 @@ in
              (tuple_t ["futhark_context", pointer, "bool ref", "bool ref"])
          , typedef "ctx" [] "ctx"
          , typedef "shape" [] (shapeTypeOfRank rank)
+         , typedef "index" [] (shapeTypeOfRank rank)
          , typedef "raw" [] pointer
          ] @ defs
          @
@@ -1177,11 +1197,48 @@ in
          fundef "values" ["(ctx,data,ctx_free,arr_free)"] (wrapCheck
            (letbind
               [ ("n", unlines (mkSize fficall pointer info "data"))
-              , ("out", apply ("Array.array") ["n", blankRef manifest elemtype])
+              , ("out", apply "Array.array" ["n", blankRef manifest elemtype])
               , ( "()"
                 , "values_into (ctx,data,ctx_free,arr_free) (Slice.full out)"
                 )
               ] ["out"]))
+         @
+         fundef "index"
+           [ "(ctx,data,ctx_free,arr_free)"
+           , parens ("i: " ^ shapeTypeOfRank rank)
+           ]
+           (wrapCheck
+              (letbind
+                 [ ("shape", apply "shape" ["(ctx,data,ctx_free,arr_free)"])
+                 , ("()", boundsCheck rank "i" "shape")
+                 , ( "out"
+                   , apply "Array.array" ["1", blankRef manifest elemtype]
+                   )
+                 , ( "()"
+                   , apply "error_check"
+                       [ fficall (#index ops)
+                           ([ ("ctx", "futhark_context")
+                            , ("out", data_t)
+                            , ("data", pointer)
+                            ]
+                            @
+                            (if rank = 1 then
+                               [(intToInt64 "i", "Int64.int")]
+                             else
+                               List.tabulate (rank, fn i =>
+                                 (intToInt64 (project (i + 1) "i"), "Int64.int"))))
+                           "int"
+                       , "ctx"
+                       ]
+                   )
+                 , ( "()"
+                   , apply "error_check"
+                       [ (fficall "futhark_context_sync"
+                            [("ctx", "futhark_context")] "int")
+                       , "ctx"
+                       ]
+                   )
+                 ] [apply "Array.sub" ["out", "0"]]))
          @
          (case backend of
             "opencl" =>

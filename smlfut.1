@@ -280,12 +280,14 @@ sig
   type array
   type ctx
   type shape
+  type index
   type raw
   structure Array : MONO_ARRAY
   structure Slice : MONO_ARRAY_SLICE
   val new: ctx -> Slice.slice -> shape -> array
   val free: array -> unit
   val shape: array -> shape
+  val index: array -> index -> Array.elem
   val values: array -> native.array
   val values_into: array -> Slice.slice -> unit
   val new_raw: ctx -> raw -> shape -> array
@@ -297,11 +299,13 @@ sig
   type array
   type ctx
   type shape
+  type index
   type elem
   type raw
   val new: ctx -> elem ArraySlice.slice -> shape -> array
   val free: array -> unit
   val shape: array -> shape
+  val index: array -> index -> elem
   val values: array -> elem Array.array
   val values_into: array -> elem ArraySlice.slice -> unit
   val new_raw: ctx -> raw -> shape -> array
@@ -322,16 +326,25 @@ for
 .Ss Description
 .
 .Bl -tag -width indent
-.It Li array
+.It Li type array
 The abstract array type.
-.It Li ctx
+.It Li type ctx
 The Futhark context type.  Each array structure refines this to be identical to the
-.Li ctx
+.Li type ctx
 type of the top level structure.
-.It Li shape
+.It Li type shape
 A type for the shape of the array. This is
 .Li int
 for single dimensional arrays, and otherwise a tuple of integers.
+.It Li type index
+A type for valid indexes into the array. This is identical to
+.Li shape
+and is only present to make the types more readable.
+.It Li index
+Read a single element from the array. Raises
+.Li
+Subscript
+on out of bounds.
 .It Li new
 Construct a Futhark array from an SML array slice.  Raises
 .Li Size
