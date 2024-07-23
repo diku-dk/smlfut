@@ -380,14 +380,14 @@ struct
                fun fieldType (name, {project, type_}) =
                  (name, typeToSMLInside manifest type_)
              in
-               [ structspec name "FUTHARK_RECORD"
+               [ structspec (escapeName name) "FUTHARK_RECORD"
                , "where type ctx = ctx"
                , "  and type record = "
                  ^ record_t (map fieldType (#fields record))
                ]
              end
          | SOME (OPAQUE_SUM sum) =>
-             [structspec name "", "sig"] @ sumDef manifest name sum
+             [structspec (escapeName name) "", "sig"] @ sumDef manifest name sum
              @
              [ "include FUTHARK_SUM"
              , "where type ctx = ctx"
