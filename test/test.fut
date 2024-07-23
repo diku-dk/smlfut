@@ -25,3 +25,7 @@ entry sum_opaque_rot (s: sum_opaque []) : ?[n].sum_opaque [n] =
 
 type~ record_with_opaque = {f: sum_opaque []}
 entry record_with_opaque x : record_with_opaque = {f = mk_sum_opaque x}
+
+entry mk_record_array (xs: []i32) (ys: []i32) = zip xs (zip ys ys)
+
+entry mk_record_array_array (xs: [][]i32) (ys: []i32) = zip xs ys

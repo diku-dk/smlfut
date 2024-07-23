@@ -420,7 +420,8 @@ end
 Any struct that implements this signature will refine the
 .Li record
 type such that the Futhark value can be constructed from an
-appropriate SML record.
+appropriate SML record. As a special case, a Futhark tuple (0-indexed)
+is associated with a properly 1-indexed SML tuple.
 .
 Note that if you convert a Futhark record into an SML record with
 .Li values ,

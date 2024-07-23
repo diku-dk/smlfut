@@ -234,8 +234,14 @@ struct
   fun escapeName name =
     let
       fun escape c =
-        if constituent c then c else #"_"
-      val name' = String.map escape name
+        if constituent c then
+          str c
+        else
+          case c of
+            #"[" => "_LB_"
+          | #"]" => "_RB_"
+          | _ => "_"
+      val name' = concat (map escape (explode name))
     in
       if name <> name' then "unrep_" ^ name' else name
     end
@@ -365,6 +371,22 @@ struct
       (map (fn (c, v) => (c, map (typeToSMLInside manifest) (#payload v)))
          (#variants sum))
 
+
+  (* Not all Futhark fields are valid SML fields, so we may have to
+  rename them. Further, we want to map 0-index Futhark tuples to
+  1-indexed SML tuples. *)
+  fun recordFieldMap (fs: field list) =
+    let
+      val fut_tuple_fields = List.tabulate (length fs, Int.toString)
+      val sml_tuple_fields = List.tabulate (length fs, fn i =>
+        Int.toString (i + 1))
+    in
+      if map #1 fs = fut_tuple_fields then
+        ListPair.zip (sml_tuple_fields, map #2 fs)
+      else
+        fs
+    end
+
   fun generateTypeSpec manifest (name, FUTHARK_ARRAY info) =
         origNameComment name @ futharkArrayStructSpec info
     | generateTypeSpec manifest (name, FUTHARK_OPAQUE info) =
@@ -383,7 +405,7 @@ struct
                [ structspec (escapeName name) "FUTHARK_RECORD"
                , "where type ctx = ctx"
                , "  and type record = "
-                 ^ record_t (map fieldType (#fields record))
+                 ^ record_t (map fieldType (recordFieldMap (#fields record)))
                ]
              end
          | SOME (OPAQUE_SUM sum) =>
@@ -419,6 +441,7 @@ struct
               NONE => []
             | SOME (OPAQUE_RECORD record) =>
                 let
+                  val fields = recordFieldMap (#fields record)
                   fun getField (name, {project, type_}) =
                     ( name
                     , "let val out = " ^ mkOut manifest type_ ^ "in "
@@ -442,39 +465,39 @@ struct
                              ]
                        | _ => fetchOut "out" type_) ^ " end"
                     )
+                  fun fieldVar name = "f_" ^ name
+                  fun freeVar name = fieldVar name ^ "_free"
                   fun fieldParam (name, {project, type_}) =
                     ( name
                     , case isPrimType type_ of
-                        SOME _ => name
-                      | NONE => tuple_e ["_", name, "_", name ^ "_free"]
+                        SOME _ => fieldVar name
+                      | NONE => tuple_e ["_", fieldVar name, "_", freeVar name]
                     )
-                  fun fieldArg (name, {project, type_}) = (name, apiType type_)
+                  fun fieldArg (name, {project, type_}) =
+                    (fieldVar name, apiType type_)
                   fun fieldType (name, {project, type_}) =
                     (name, typeToSMLInside manifest type_)
                   fun fieldCheckFree (name, info) =
                     case isPrimType (#type_ info) of
                       SOME _ => ("()", "()")
-                    | NONE => ("()", checkUseAfterFree (name ^ "_free"))
+                    | NONE => ("()", checkUseAfterFree (freeVar name))
                 in
-                  [typedef "record" [] (record_t
-                     (map fieldType (#fields record)))]
+                  [typedef "record" [] (record_t (map fieldType fields))]
                   @
                   fundef "values" ["(ctx,data,ctx_free,obj_free)"] (wrapCheck
-                    [record_e (map getField (#fields record))])
+                    [record_e (map getField fields)])
                   @
                   fundef "new"
-                    [ "{cfg,ctx,free}"
-                    , record_e (map fieldParam (#fields record))
-                    ]
+                    ["{cfg,ctx,free}", record_e (map fieldParam fields)]
                     (letbind
                        ([("()", checkUseAfterFree "free")]
-                        @ map fieldCheckFree (#fields record)
+                        @ map fieldCheckFree fields
                         @ [("out", apply "Word64Array.array" ["1", "0w0"])])
                        [ apply "error_check"
                            [ (fficall (#new record)
                                 ([ ("ctx", "futhark_context")
                                  , ("out", "Word64Array.array")
-                                 ] @ map fieldArg (#fields record)) "int")
+                                 ] @ map fieldArg fields) "int")
                            , "ctx"
                            ] ^ ";"
                        , valFromPtrArr "out"
