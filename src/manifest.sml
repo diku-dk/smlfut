@@ -33,7 +33,22 @@ type variant =
 
 type sum = {variants: variant list, variant: string}
 
-datatype opaque_extra = OPAQUE_RECORD of record | OPAQUE_SUM of sum
+type opaque_array = {rank: int, elemtype: string, index: string, shape: string}
+
+type record_array =
+  { rank: int
+  , elemtype: string
+  , fields: field list
+  , zip: string
+  , index: string
+  , shape: string
+  }
+
+datatype opaque_extra =
+  OPAQUE_RECORD of record
+| OPAQUE_SUM of sum
+| OPAQUE_ARRAY of opaque_array
+| OPAQUE_RECORD_ARRAY of record_array
 
 type opaque_info =
   { ctype: string
@@ -167,21 +182,50 @@ local
                 { ctype = lookString obj "ctype"
                 , ops = opaqueOps (lookObj obj "ops")
                 , extra =
-                    case (Json.objLook obj "record", Json.objLook obj "sum") of
-                      (SOME (Json.OBJECT robj), _) =>
+                    case
+                      ( Json.objLook obj "record"
+                      , Json.objLook obj "sum"
+                      , Json.objLook obj "opaque_array"
+                      , Json.objLook obj "record_array"
+                      )
+                    of
+                      (SOME (Json.OBJECT robj), _, _, _) =>
                         SOME (OPAQUE_RECORD
                           { new = lookString robj "new"
                           , fields = (map fieldFromJSON
                               (lookArray robj "fields"))
                           })
-                    | (SOME _, _) => raise Fail "Invalid record in manifest."
-                    | (_, SOME (Json.OBJECT sobj)) =>
+                    | (SOME _, _, _, _) =>
+                        raise Fail "Invalid record in manifest."
+                    | (_, SOME (Json.OBJECT sobj), _, _) =>
                         SOME (OPAQUE_SUM
                           { variant = lookString sobj "variant"
                           , variants = map variantFromJSON
                               (lookArray sobj "variants")
                           })
-                    | (_, SOME _) => raise Fail "Invalid record in manifest."
+                    | (_, SOME _, _, _) =>
+                        raise Fail "Invalid record in manifest."
+                    | (_, _, SOME (Json.OBJECT obj), _) =>
+                        SOME (OPAQUE_ARRAY
+                          { rank = lookInt obj "rank"
+                          , elemtype = lookString obj "elemtype"
+                          , index = lookString obj "index"
+                          , shape = lookString obj "shape"
+                          })
+                    | (_, _, SOME _, _) =>
+                        raise Fail "Invalid opaque array in manifest."
+                    | (_, _, _, SOME (Json.OBJECT obj)) =>
+                        SOME (OPAQUE_RECORD_ARRAY
+                          { rank = lookInt obj "rank"
+                          , elemtype = lookString obj "elemtype"
+                          , index = lookString obj "index"
+                          , fields = (map fieldFromJSON
+                              (lookArray obj "fields"))
+                          , shape = lookString obj "shape"
+                          , zip = lookString obj "zip"
+                          })
+                    | (_, _, _, SOME _) =>
+                        raise Fail "Invalid record array in manifest."
                     | _ => NONE
                 }
           | kind => raise Fail ("Cannot handle type of kind: " ^ kind)

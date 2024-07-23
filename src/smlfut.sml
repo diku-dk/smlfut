@@ -415,7 +415,16 @@ struct
              , "where type ctx = ctx"
              , "  and type sum = " ^ name
              , "end"
+             ]
+         | SOME (OPAQUE_ARRAY arr) =>
+             [ structspec (escapeName name) "FUTHARK_OPAQUE"
+             , "where type ctx = ctx"
+             ]
+         | SOME (OPAQUE_RECORD_ARRAY arr) =>
+             [ structspec (escapeName name) "FUTHARK_OPAQUE"
+             , "where type ctx = ctx"
              ])
+
 
   fun valFromPtrArr out =
     tuple_e
@@ -439,6 +448,8 @@ struct
           val more =
             case #extra info of
               NONE => []
+            | SOME (OPAQUE_ARRAY arr) => []
+            | SOME (OPAQUE_RECORD_ARRAY arr) => []
             | SOME (OPAQUE_RECORD record) =>
                 let
                   val fields = recordFieldMap (#fields record)
