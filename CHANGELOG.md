@@ -8,6 +8,8 @@ All user-visible changes are noted here.
 
 * The array signatures now support an `index` function.
 
+* Arrays of records are now supported.
+
 ## [1.4.0]
 
 * Arrays modules now have `new_raw` and `values_raw` functions.

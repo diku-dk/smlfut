@@ -450,6 +450,37 @@ with
 .Li values ,
 you must still also free the original Futhark object at some point.
 .
+.Sh Arrays of records
+.
+Each array of records is represented by a structure implementing the
+signature below.
+.Bd -literal -offset indent
+signature FUTHARK_RECORD_ARRAY =
+sig
+  include FUTHARK_OPAQUE
+  type shape
+  type index
+  type elem
+  type fields
+  val shape: t -> shape
+  val index: t -> index -> elem
+  val zip : fields -> t
+end
+.Ed
+.Pp
+The
+.Li shape ,
+.Li index ,
+and
+.Li elem
+types are similar to the corresponding types in the
+.Li FUTHARK_ARRAY
+signature. The
+.Li fields
+type will be refined to a tuple of Futhark array types, which can be zipped together (using
+.Li zip )
+to produce an array of records.
+.
 .Sh Entry points
 .
 Each Futhark entry point becomes a function with two parameters: the

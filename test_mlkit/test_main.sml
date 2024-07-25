@@ -134,12 +134,47 @@ fun test_sum ctx =
     Futhark.Opaque.sum_opaque.free sum_next
   end
 
+fun test_record_array ctx =
+  let
+    val fs1 =
+      Futhark.Int32Array2.new ctx
+        (Int32ArraySlice.full (Int32Array.fromList [1, 2, 3, 4, 5, 6])) (3, 2)
+    val fs2 =
+      Futhark.Int32Array1.new ctx
+        (Int32ArraySlice.full (Int32Array.fromList [7, 8, 9])) 3
+    val ra = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.zip (fs1, fs2)
+    val () =
+      if Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.shape ra <> 3 then
+        raise Fail "Unexpected shape"
+      else
+        ()
+    val () = Futhark.Int32Array2.free fs1
+    val () = Futhark.Int32Array1.free fs2
+    val x = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.index ra 1
+    val () = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.free ra
+  in
+    ()
+  end
+
 val status = ref OS.Process.success
 
 fun test ctx name f =
   f ctx
-  handle Fail s =>
-    (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
+  handle
+    Fail s =>
+      (print (name ^ " failed: " ^ s ^ "\n"); status := OS.Process.failure)
+  | Futhark.Error s =>
+      ( print (name ^ " failed (Futhark Error): " ^ s ^ "\n")
+      ; status := OS.Process.failure
+      )
+  | Futhark.Free =>
+      ( print (name ^ " failed (use-after-free)\n")
+      ; status := OS.Process.failure
+      )
+  | _ =>
+      ( print (name ^ " failed (unexpected exception)\n")
+      ; status := OS.Process.failure
+      )
 
 val () =
   let
@@ -160,6 +195,8 @@ val () =
     test ctx "test_store" test_store;
 
     test ctx "test_sum" test_sum;
+
+    test ctx "test_record_array" test_record_array;
 
     Futhark.Context.free ctx;
 
