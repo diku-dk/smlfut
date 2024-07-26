@@ -479,7 +479,10 @@ signature. The
 .Li fields
 type will be refined to a tuple of Futhark array types, which can be zipped together (using
 .Li zip )
-to produce an array of records.
+to produce an array of records. Raises
+.Li Size
+if the arrays do not have matching
+shapes (up to the rank of the record array type).
 .
 .Sh Entry points
 .

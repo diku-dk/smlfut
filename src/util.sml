@@ -2,7 +2,7 @@ fun mapi f xs =
   let
     fun recurse _ [] = []
       | recurse i (x :: xs') =
-          f i x :: recurse (i + 1) xs'
+          f (i, x) :: recurse (i + 1) xs'
   in
     recurse 0 xs
   end

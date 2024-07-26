@@ -142,6 +142,14 @@ fun test_record_array ctx =
     val fs2 =
       Futhark.Int32Array1.new ctx
         (Int32ArraySlice.full (Int32Array.fromList [7, 8, 9])) 3
+    val fs3 =
+      Futhark.Int32Array1.new ctx
+        (Int32ArraySlice.full (Int32Array.fromList [7, 8])) 2
+    val () =
+      ( Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.zip (fs1, fs3)
+      ; raise Fail "zip did not raise Size"
+      )
+      handle Size => ()
     val ra = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.zip (fs1, fs2)
     val () =
       if Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.shape ra <> 3 then

@@ -212,6 +212,23 @@ fun boundsCheck 1 index shape =
         "if " ^ check ^ " then () else raise Subscript"
       end
 
+
+(* Check that the leading rank dimensions match. *)
+fun shapeCheck _ 1 x_shape 1 y_shape =
+      "if " ^ x_shape ^ " = " ^ y_shape ^ " then () else raise Size"
+  | shapeCheck _ 1 x_shape _ y_shape =
+      "if " ^ x_shape ^ " = " ^ project 1 y_shape ^ " then () else raise Size"
+  | shapeCheck _ _ x_shape 1 y_shape =
+      "if " ^ project 1 x_shape ^ " = " ^ y_shape ^ " then () else raise Size"
+  | shapeCheck rank _ x_shape _ y_shape =
+      let
+        val check = punctuate " andalso " (List.tabulate (rank, fn i =>
+          project (i + 1) x_shape ^ " = " ^ project (i + 1) y_shape))
+      in
+        "if " ^ check ^ " then () else raise Size"
+      end
+
+
 (* Assuming 'i' is a valid index into an array with 'rank' dimensions,
 produce a list of the indexes. Also works for shape arguments. *)
 fun indexArgs 1 i =
@@ -324,6 +341,18 @@ struct
       SOME t' => futharkTypeToSML t t'
     | NONE => primTypeToSML t
 
+  (* Must be opaque or array. *)
+  fun typeToStructInside manifest t =
+    let
+      fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayStruct info
+        | futharkTypeToSML name (FUTHARK_OPAQUE info) =
+            futharkOpaqueStructInside name
+    in
+      case lookupType manifest t of
+        SOME t' => futharkTypeToSML t t'
+      | NONE => raise Fail ("typeToStructInside: unknown type " ^ t)
+    end
+
   fun typeToSMLInside manifest t =
     let
       fun futharkTypeToSML name (FUTHARK_ARRAY info) = futharkArrayType info
@@ -334,6 +363,16 @@ struct
         SOME t' => futharkTypeToSML t t'
       | NONE => primTypeToSML t
     end
+
+  fun typeRank manifest t =
+    case lookupType manifest t of
+      NONE => raise Fail ("typeRank: unknown type " ^ t)
+    | SOME (FUTHARK_ARRAY info) => #rank info
+    | SOME (FUTHARK_OPAQUE info) =>
+        case #extra info of
+          SOME (OPAQUE_ARRAY arr) => #rank arr
+        | SOME (OPAQUE_RECORD_ARRAY arr) => #rank arr
+        | _ => raise Fail ("typeRank: has no rank " ^ t)
 
   fun generateEntrySpec manifest
     (name, entry_point {cfun, inputs, outputs, tuning_params}) =
@@ -532,10 +571,30 @@ struct
                   (letbind
                      ([("()", checkUseAfterFree (project 3 (project 1 "fs")))]
                       @
-                      List.tabulate (length (#fields arr), fn i =>
-                        ( "()"
-                        , checkUseAfterFree (project 4 (project (i + 1) "fs"))
-                        ))
+                      (List.concat
+                       o
+                       mapi (fn (i, (f_, f_info)) =>
+                         [ ( "()"
+                           , checkUseAfterFree (project 4
+                               (project (i + 1) "fs"))
+                           )
+                         , ( "shape" ^ Int.toString i
+                           , apply
+                               (typeToStructInside manifest (#type_ f_info)
+                                ^ ".shape") [project (i + 1) "fs"]
+                           )
+                         ]
+                         @
+                         (if i = 0 then
+                            []
+                          else
+                            [( "()"
+                             , shapeCheck (#rank arr)
+                                 (typeRank manifest (#type_ (#2
+                                    (hd (#fields arr))))) "shape0"
+                                 (typeRank manifest (#type_ f_info))
+                                 ("shape" ^ Int.toString i)
+                             )]))) (#fields arr)
                       @
                       [ ("(ctx, _, ctx_free, _)", project 1 "fs")
                       , ("out", apply "Word64Array.array" ["1", "0w0"])
@@ -622,11 +681,11 @@ struct
             | SOME (OPAQUE_SUM sum) =>
                 let
                   fun payload i = "v" ^ Int.toString i
-                  fun payloadArg i t =
+                  fun payloadArg (i, t) =
                     case lookupType manifest t of
                       NONE => (payload i, apiType t)
                     | SOME _ => (apply "#2" [payload i], apiType t)
-                  fun payloadCheckFree i type_ =
+                  fun payloadCheckFree (i, type_) =
                     case isPrimType type_ of
                       SOME _ => ("()", "()")
                     | NONE =>
@@ -657,13 +716,13 @@ struct
                           ]
                       )
                     end
-                  fun destructVariant i (vname, variant) =
+                  fun destructVariant (i, (vname, variant)) =
                     let
                       fun outv i = "out" ^ Int.toString i
-                      fun bindOut i t =
+                      fun bindOut (i, t) =
                         (outv i, mkOut manifest t)
-                      fun outArg i t = (outv i, outType t)
-                      fun outRes i t =
+                      fun outArg (i, t) = (outv i, outType t)
+                      fun outRes (i, t) =
                         case lookupType manifest t of
                           NONE => fetchOut (outv i) t
                         | SOME _ =>
