@@ -1,5 +1,6 @@
-structure Futhark = test
+(* Generic tests for backends that use monomorphic arrays. *)
 
+structure Futhark = test
 functor ArrayTest (structure A: MONO_ARRAY; val eq: A.elem * A.elem -> bool) :>
 sig
   val equal: A.array -> A.array -> bool

@@ -3,6 +3,6 @@ local $(SML_LIB)/basis/basis.mlb
 in
       test.sig
       test.sml
-      test_main.sml
+      ../test/test_mono.sml
 end
 

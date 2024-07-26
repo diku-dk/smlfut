@@ -23,13 +23,16 @@ test_mlton_mono/test.sml: test/test.json smlfut
 test_mlkit/test.sml: test/test.json smlfut
 	./smlfut --target=mlkit test/test.json -o test_mlkit
 
-test_mlkit/test: test/test.json test_mlkit/test_main.sml test_mlkit/test.sml
+test_mlkit/test: test/test.json test/test_mono.sml test_mlkit/test.sml
 	cd test_mlkit && gcc -c ../test/test.c test.smlfut.c
 	cd test_mlkit && ar r libtest.a test.o test.smlfut.o
 	$(MLKIT) -o test_mlkit/test -libdirs test_mlkit -libs "m,c,dl,test" -no_gc test_mlkit/test.mlb
 
-%/test: test/test.json %/test_main.sml %/test.sml
-	$(MLTON) $(MLTONFLAGS) $*/test.mlb test/test.c $*/test.smlfut.c
+test_mlton_mono/test: test/test.json test/test_mono.sml test_mlton_mono/test.sml
+	$(MLTON) $(MLTONFLAGS) test_mlton_mono/test.mlb test/test.c test_mlton_mono/test.smlfut.c
+
+test_mlton_poly/test: test/test.json test/test_mono.sml test_mlton_poly/test.sml
+	$(MLTON) $(MLTONFLAGS) test_mlton_poly/test.mlb test/test.c test_mlton_poly/test.smlfut.c
 
 run_test_mlton_poly: test_mlton_poly/test
 	cd test_mlton_poly && ./test
