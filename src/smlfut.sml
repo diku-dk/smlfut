@@ -85,6 +85,7 @@ val sig_FUTHARK_RECORD_ARRAY =
   , "  val zip : fields -> t"
   , "end"
   ]
+
 (* Actual logic. *)
 
 fun gpuBackend "opencl" = true
@@ -92,20 +93,9 @@ fun gpuBackend "opencl" = true
   | gpuBackend "hip" = true
   | gpuBackend _ = false
 
-fun constituent c =
-  Char.isAlphaNum c orelse c = #"'" orelse c = #"_"
-
-fun isValidName s =
-  List.all constituent (explode s)
-
-fun checkValidName s =
-  if isValidName s then ()
-  else raise Fail ("\"" ^ s ^ "\" is an invalid SML identifier.")
-
 fun mkSum [] = "0"
   | mkSum [x] = x
   | mkSum (x :: xs) = x ^ "+" ^ mkSum xs
-
 
 fun mkProd [] = "1"
   | mkProd [x] = x
@@ -288,22 +278,7 @@ struct
 
   fun futharkArrayType (info: array_info) = futharkArrayStruct info ^ ".array"
 
-  fun escapeName name =
-    let
-      fun escape c =
-        if constituent c then
-          str c
-        else
-          case c of
-            #"[" => "_LB_"
-          | #"]" => "_RB_"
-          | _ => "_"
-      val name' = concat (map escape (explode name))
-    in
-      if name <> name' then "unrep_" ^ name' else name
-    end
-
-  fun futharkOpaqueStructInside name = escapeName name
+  fun futharkOpaqueStructInside name = futTypeName name
 
   fun futharkOpaqueTypeInside name = futharkOpaqueStructInside name ^ ".t"
 
@@ -476,7 +451,7 @@ struct
         @
         (case #extra info of
            NONE =>
-             [ structspec (escapeName name) "FUTHARK_OPAQUE"
+             [ structspec (futTypeName name) "FUTHARK_OPAQUE"
              , "where type ctx = ctx"
              ]
          | SOME (OPAQUE_RECORD record) =>
@@ -484,14 +459,15 @@ struct
                fun fieldType (name, {project, type_}) =
                  (name, typeToSMLInside manifest type_)
              in
-               [ structspec (escapeName name) "FUTHARK_RECORD"
+               [ structspec (futTypeName name) "FUTHARK_RECORD"
                , "where type ctx = ctx"
                , "  and type record = "
                  ^ record_t (map fieldType (recordFieldMap (#fields record)))
                ]
              end
          | SOME (OPAQUE_SUM sum) =>
-             [structspec (escapeName name) "", "sig"] @ sumDef manifest name sum
+             [structspec (futTypeName name) "", "sig"]
+             @ sumDef manifest name sum
              @
              [ "include FUTHARK_SUM"
              , "where type ctx = ctx"
@@ -499,11 +475,11 @@ struct
              , "end"
              ]
          | SOME (OPAQUE_ARRAY arr) =>
-             [ structspec (escapeName name) "FUTHARK_OPAQUE"
+             [ structspec (futTypeName name) "FUTHARK_OPAQUE"
              , "where type ctx = ctx"
              ]
          | SOME (OPAQUE_RECORD_ARRAY arr) =>
-             [ structspec (escapeName name) "FUTHARK_RECORD_ARRAY"
+             [ structspec (futTypeName name) "FUTHARK_RECORD_ARRAY"
              , "where type ctx = ctx"
              , "  and type shape = " ^ shapeTypeOfRank (#rank arr)
              , "  and type index = " ^ shapeTypeOfRank (#rank arr)
@@ -763,7 +739,7 @@ struct
                            @ [("_", ["raise Domain"])])))
                 end
         in
-          structdef (escapeName name) NONE
+          structdef (futTypeName name) NONE
             ([ typedef "ctx" [] "ctx"
              , typedef "t" []
                  (tuple_t ["futhark_context", pointer, "bool ref", "bool ref"])

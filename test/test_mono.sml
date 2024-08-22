@@ -147,20 +147,20 @@ fun test_record_array ctx =
       Futhark.Int32Array1.new ctx
         (Int32ArraySlice.full (Int32Array.fromList [7, 8])) 2
     val () =
-      ( Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.zip (fs1, fs3)
+      ( Futhark.Opaque.arr_tup2_arr_i32_i32.zip (fs1, fs3)
       ; raise Fail "zip did not raise Size"
       )
       handle Size => ()
-    val ra = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.zip (fs1, fs2)
+    val ra = Futhark.Opaque.arr_tup2_arr_i32_i32.zip (fs1, fs2)
     val () =
-      if Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.shape ra <> 3 then
+      if Futhark.Opaque.arr_tup2_arr_i32_i32.shape ra <> 3 then
         raise Fail "Unexpected shape"
       else
         ()
     val () = Futhark.Int32Array2.free fs1
     val () = Futhark.Int32Array1.free fs2
-    val x = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.index ra 1
-    val () = Futhark.Opaque.unrep__LB__RB___LB__RB_i32__i32_.free ra
+    val x = Futhark.Opaque.arr_tup2_arr_i32_i32.index ra 1
+    val () = Futhark.Opaque.arr_tup2_arr_i32_i32.free ra
   in
     ()
   end

@@ -2,6 +2,11 @@
 
 All user-visible changes are noted here.
 
+## [1.6.0]
+
+* Better names for structures corresponding to opaque types that are
+  arrays and records.
+
 ## [1.5.0]
 
 * Futhark tuples now work properly.

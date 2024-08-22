@@ -5,6 +5,7 @@ in
       version.sml
       util.sml
       manifest.sml
+      typename.sml
       smlfut.sml
 end
 
