@@ -4,7 +4,7 @@ All user-visible changes are noted here.
 
 ## [1.5.0]
 
-* Futhark tuples not work properly.
+* Futhark tuples now work properly.
 
 * The array signatures now support an `index` function.
 
