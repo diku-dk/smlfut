@@ -36,6 +36,11 @@ local
 
   val reject: 'a parser = P (fn s => NONE)
 
+  fun delay (fp: 'a -> 'b parser) (x: 'a) : 'b parser =
+    P (fn s => let val P p = fp x in p s end)
+
+  fun delay0 f = delay f ()
+
   val eof = P (fn s => if null s then SOME ((), s) else NONE)
 
   fun satisfy p =
@@ -44,19 +49,15 @@ local
   fun char c =
     satisfy (fn c' => c = c')
 
-  fun p1 <|> p2 =
+  fun (P p1) <|> (P p2) =
     P (fn s =>
-      let
-        val P p1' = p1 ()
-      in
-        case p1' s of
-          SOME x => SOME x
-        | NONE => let val P p2' = p2 () in p2' s end
-      end)
+      case p1 s of
+        SOME x => SOME x
+      | NONE => let in p2 s end)
 
   fun choice [] = reject
     | choice (p :: ps) =
-        p <|> (fn () => choice ps)
+        p <|> delay choice ps
 
   fun p1 <*> p2 =
     p1 >>= (fn f => p2 >>= (fn x => accept (f x)))
@@ -71,8 +72,7 @@ local
     p >>= (fn x => accept (f x))
 
   fun many p =
-    (fn () => (p >>= (fn x => many p >>= (fn xs => accept (x :: xs)))))
-    <|> (fn () => accept [])
+    (p >>= (fn x => many p >>= (fn xs => accept (x :: xs)))) <|> delay accept []
 
   fun some p =
     p >>= (fn x => many p >>= (fn xs => accept (x :: xs)))
@@ -88,12 +88,12 @@ local
     >>=
     (fn x =>
        choice
-         [ fn () => sep *> sepBy1 p sep >>= (fn xs => accept (x :: xs))
-         , fn () => accept [x]
+         [ sep *> delay (sepBy1 p) sep >>= (fn xs => accept (x :: xs))
+         , delay accept [x]
          ])
 
   fun sepBy p sep =
-    choice [fn () => sepBy1 p sep, fn () => accept []]
+    choice [delay (sepBy1 p) sep, delay accept []]
 
   fun lChar c =
     lexeme (char c)
@@ -131,11 +131,11 @@ local
 
   fun pT () =
     choice
-      [ fn () => TVar <$> lName
-      , fn () => parens (pT ())
-      , fn () => TArray <$> (lString "[]" *> pT ())
-      , fn () => TTuple <$> parens (sepBy (pT ()) (lChar #","))
-      , fn () => TRecord <$> braces (sepBy (pField ()) (lChar #","))
+      [ TVar <$> lName
+      , parens (delay0 pT)
+      , TArray <$> (lString "[]" *> delay0 pT)
+      , TTuple <$> parens (sepBy (delay0 pT) (lChar #","))
+      , TRecord <$> braces (sepBy (delay0 pField) (lChar #","))
       ]
   and pField () =
     (fn v => fn t => (v, t)) <$> (lName <* lChar #":") <*> pT ()
