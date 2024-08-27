@@ -32,8 +32,7 @@ struct
       SOME (x, s') => SOME x
     | NONE => NONE
 
-  infixr >>= <|> *> <*
-  infix <*> <$>
+  infixr >>= <|>
   fun (P p) >>= f =
     P (fn s =>
       case p s of
