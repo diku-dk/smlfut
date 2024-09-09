@@ -901,7 +901,7 @@ struct
                 | usesKnown _ = true
               val (ok, next) = List.partition usesKnown rs
             in
-              ok @ order (map #1 ok) next
+              ok @ order (map #1 ok @ known) next
             end
       fun isArray (_, FUTHARK_ARRAY _) = true
         | isArray _ = false

@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## [1.6.1]
+
+* Fixed infinite loop on some manifests.
+
 ## [1.6.0]
 
 * Better names for structures corresponding to opaque types that are
