@@ -150,6 +150,7 @@ local
   | TArray of T
   | TTuple of T list
   | TRecord of (string * T) list
+  | TSum of (string * T list) list
 
   fun pT () =
     choice
@@ -158,7 +159,10 @@ local
       , TArray <$> (lString "[]" *> delay0 pT)
       , TTuple <$> parens (sepBy (delay0 pT) (lChar #","))
       , TRecord <$> braces (sepBy (delay0 pField) (lChar #","))
+      , TSum <$> sepBy1 (delay0 pConstructor) (lChar #"|")
       ]
+  and pConstructor () =
+    (fn v => fn cs => (v, cs)) <$> (char #"#" *> lName) <*> many (delay0 pT)
   and pField () =
     (fn v => fn t => (v, t)) <$> (lName <* lChar #":") <*> pT ()
 
@@ -168,12 +172,15 @@ local
         "(" ^ punctuate "," (map showT ts) ^ ")"
     | showT (TRecord ts) =
         "{" ^ punctuate "," (map (fn (v, t) => v ^ ":" ^ showT t) ts) ^ "}"
+    | showT (TSum cs) =
+        punctuate "|"
+          (map (fn (c, ts) => punctuate " " ("#" ^ c :: map showT ts)) cs)
 
   (* Make a string a valid SML identifier, whatever it may presently be. *)
   fun escapeName name =
     let
       fun escape c =
-        if constituent c then
+        if Char.isAlphaNum c then
           str c
         else
           case c of
@@ -191,6 +198,14 @@ local
         "tup" ^ Int.toString (length ts) ^ "_" ^ punctuate "_" (map showTSML ts)
     | showTSML (TRecord ts) =
         "rec" ^ Int.toString (length ts) ^ "_" ^ punctuate "_" (map #1 ts)
+    | showTSML (TSum cs) =
+        let
+          fun showVariant (v, ts) =
+            punctuate "_" (v ^ Int.toString (length ts) :: map showTSML ts)
+        in
+          "sum" ^ Int.toString (length cs) ^ "_"
+          ^ punctuate "_" (map showVariant cs)
+        end
 in
   (*
     val () =

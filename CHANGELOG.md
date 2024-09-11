@@ -8,6 +8,9 @@ All user-visible changes are noted here.
 
 * Arrays of opaque types are now supported.
 
+* Better generated type names for SML types corresponding to Futhark
+  sum types.
+
 ## [1.6.1]
 
 * Fixed infinite loop on some manifests.
