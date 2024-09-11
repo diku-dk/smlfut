@@ -467,11 +467,11 @@ struct
              end
          | SOME (OPAQUE_SUM sum) =>
              [structspec (futTypeName name) "", "sig"]
-             @ sumDef manifest name sum
+             @ sumDef manifest (futTypeName name) sum
              @
              [ "include FUTHARK_SUM"
              , "where type ctx = ctx"
-             , "  and type sum = " ^ name
+             , "  and type sum = " ^ (futTypeName name)
              , "end"
              ]
          | SOME (OPAQUE_ARRAY arr) =>
@@ -723,7 +723,8 @@ struct
                       )
                     end
                 in
-                  sumDef manifest name sum @ [typedef "sum" [] name]
+                  sumDef manifest (futTypeName name) sum
+                  @ [typedef "sum" [] (futTypeName name)]
                   @
                   fundef "new" ["{cfg,ctx,free=ctx_free}", "sum"]
                     (letbind [("()", checkUseAfterFree "ctx_free")]
