@@ -484,6 +484,31 @@ to produce an array of records. Raises
 if the arrays do not have matching
 shapes (up to the rank of the record array type).
 .
+.Sh Arrays of opaques
+.
+Each array of opaque non-records is represented by a structure
+implementing the signature below.
+.Bd -literal -offset indent
+signature FUTHARK_OPAQUE_ARRAY =
+sig
+  include FUTHARK_OPAQUE
+  type shape
+  type index
+  type elem
+  val shape: t -> shape
+  val index: t -> index -> elem
+end
+.Ed
+.
+The
+.Li shape ,
+.Li index ,
+and
+.Li elem
+types are similar to the corresponding types in the
+.Li FUTHARK_ARRAY
+signature. In practice, this signature is used only for arrays
+comprised of sum type values.
 .Sh Entry points
 .
 Each Futhark entry point becomes a function with two parameters: the

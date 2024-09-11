@@ -6,6 +6,8 @@ All user-visible changes are noted here.
 
 * Fixed generated names of SML versions of sum types.
 
+* Arrays of opaque types are now supported.
+
 ## [1.6.1]
 
 * Fixed infinite loop on some manifests.

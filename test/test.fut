@@ -31,3 +31,5 @@ entry mk_record_array (xs: []i32) (ys: []i32) = zip xs (zip ys ys)
 entry mk_record_array_array (xs: [][]i32) (ys: []i32) = zip xs ys
 
 entry mk_sum_unnamed (x: i32) = #foo x : sum_opaque [2]
+
+entry mk_opaque_array (x: i32) = [#foo x : sum_opaque [2]]

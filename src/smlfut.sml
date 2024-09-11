@@ -86,6 +86,18 @@ val sig_FUTHARK_RECORD_ARRAY =
   , "end"
   ]
 
+val sig_FUTHARK_OPAQUE_ARRAY =
+  [ "signature FUTHARK_OPAQUE_ARRAY ="
+  , "sig"
+  , "  include FUTHARK_OPAQUE"
+  , "  type shape"
+  , "  type index"
+  , "  type elem"
+  , "  val shape: t -> shape"
+  , "  val index: t -> index -> elem"
+  , "end"
+  ]
+
 (* Actual logic. *)
 
 fun gpuBackend "opencl" = true
@@ -475,8 +487,11 @@ struct
              , "end"
              ]
          | SOME (OPAQUE_ARRAY arr) =>
-             [ structspec (futTypeName name) "FUTHARK_OPAQUE"
+             [ structspec (futTypeName name) "FUTHARK_OPAQUE_ARRAY"
              , "where type ctx = ctx"
+             , "  and type shape = " ^ shapeTypeOfRank (#rank arr)
+             , "  and type index = " ^ shapeTypeOfRank (#rank arr)
+             , "  and type elem = " ^ typeToSMLInside manifest (#elemtype arr)
              ]
          | SOME (OPAQUE_RECORD_ARRAY arr) =>
              [ structspec (futTypeName name) "FUTHARK_RECORD_ARRAY"
@@ -497,51 +512,55 @@ struct
       , "ref false"
       ]
 
+  val freechecks =
+    [("()", checkUseAfterFree "ctx_free"), ("()", checkUseAfterFree "obj_free")]
+
+  fun wrapCheck ls = letbind freechecks ls
+
+  fun opaqueArrayDefs manifest rank elemtype index shape =
+    [ typedef "elem" [] (typeToSMLInside manifest elemtype)
+    , typedef "index" [] (shapeTypeOfRank rank)
+    , typedef "shape" [] (shapeTypeOfRank rank)
+    ]
+    @
+    fundef "shape" ["(ctx,data,ctx_free,obj_free)"] (wrapCheck
+      (mkShape fficall pointer shape rank "data"))
+    @
+    fundef "index" ["(ctx,data,ctx_free,obj_free)", parens ("i: index")]
+      (letbind
+         (freechecks
+          @
+          [ ("shape", apply "shape" ["(ctx,data,ctx_free,obj_free)"])
+          , ("()", boundsCheck rank "i" "shape")
+          , ("out", mkOut manifest elemtype)
+          , ( "()"
+            , apply "error_check"
+                [ fficall index
+                    ([ ("ctx", "futhark_context")
+                     , ("out", outType elemtype)
+                     , ("data", pointer)
+                     ] @ indexArgs rank "i") "int"
+                , "ctx"
+                ]
+            )
+          ]) [valFromPtrArr "out"])
+
   fun generateTypeDef manifest
         (name, FUTHARK_ARRAY (info as {ctype, rank, elemtype, ops})) =
         futharkArrayStructDef manifest info
     | generateTypeDef manifest (name, FUTHARK_OPAQUE info) =
         let
-          val freechecks =
-            [ ("()", checkUseAfterFree "ctx_free")
-            , ("()", checkUseAfterFree "obj_free")
-            ]
-          fun wrapCheck ls = letbind freechecks ls
           val more =
             case #extra info of
               NONE => []
-            | SOME (OPAQUE_ARRAY arr) => []
+            | SOME (OPAQUE_ARRAY arr) =>
+                opaqueArrayDefs manifest (#rank arr) (#elemtype arr)
+                  (#index arr) (#shape arr)
             | SOME (OPAQUE_RECORD_ARRAY arr) =>
-                [ typedef "elem" [] (typeToSMLInside manifest (#elemtype arr))
-                , typedef "index" [] (shapeTypeOfRank (#rank arr))
-                , typedef "shape" [] (shapeTypeOfRank (#rank arr))
-                , typedef "fields" [] (recordArrayZipType manifest arr)
-                ]
+                [typedef "fields" [] (recordArrayZipType manifest arr)]
                 @
-                fundef "shape" ["(ctx,data,ctx_free,obj_free)"] (wrapCheck
-                  (mkShape fficall pointer (#shape arr) (#rank arr) "data"))
-                @
-                fundef "index"
-                  ["(ctx,data,ctx_free,obj_free)", parens ("i: index")]
-                  (letbind
-                     (freechecks
-                      @
-                      [ ( "shape"
-                        , apply "shape" ["(ctx,data,ctx_free,obj_free)"]
-                        )
-                      , ("()", boundsCheck (#rank arr) "i" "shape")
-                      , ("out", mkOut manifest (#elemtype arr))
-                      , ( "()"
-                        , apply "error_check"
-                            [ fficall (#index arr)
-                                ([ ("ctx", "futhark_context")
-                                 , ("out", outType (#elemtype arr))
-                                 , ("data", pointer)
-                                 ] @ indexArgs (#rank arr) "i") "int"
-                            , "ctx"
-                            ]
-                        )
-                      ]) [valFromPtrArr "out"])
+                opaqueArrayDefs manifest (#rank arr) (#elemtype arr)
+                  (#index arr) (#shape arr)
                 @
                 fundef "zip" [parens ("fs: fields")]
                   (letbind
@@ -1183,7 +1202,8 @@ struct
       ( unlines
           (header @ sig_FUTHARK_ARRAY @ [""] @ sig_FUTHARK_OPAQUE @ [""]
            @ sig_FUTHARK_RECORD @ [""] @ sig_FUTHARK_SUM @ [""]
-           @ sig_FUTHARK_RECORD_ARRAY @ [""] @ sigdef sig_name specs)
+           @ sig_FUTHARK_RECORD_ARRAY @ [""] @ sig_FUTHARK_OPAQUE_ARRAY @ [""]
+           @ sigdef sig_name specs)
       , unlines (header @ structdef struct_name (SOME sig_name) defs)
       , unlines
           ([ "#include <stdint.h>"
