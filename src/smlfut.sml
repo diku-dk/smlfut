@@ -1576,7 +1576,7 @@ fun options () : unit GetOpt.opt_descr list =
   , { short = []
     , long = ["structure-name"]
     , arg = GetOpt.REQ_ARG (fn s => structure_opt := SOME s, "NAME")
-    , desc = "USe this structure name."
+    , desc = "Use this structure name."
     }
   , { short = [#"o"]
     , long = ["output-directory"]
