@@ -31,7 +31,7 @@ test_mlkit/test: test/test.json test/test_mono.sml test_mlkit/test.sml
 test_mlton_mono/test: test/test.json test/test_mono.sml test_mlton_mono/test.sml
 	$(MLTON) $(MLTONFLAGS) test_mlton_mono/test.mlb test/test.c test_mlton_mono/test.smlfut.c
 
-test_mlton_poly/test: test/test.json test/test_mono.sml test_mlton_poly/test.sml
+test_mlton_poly/test: test/test.json test_mlton_poly/test_main.sml test_mlton_poly/test.sml
 	$(MLTON) $(MLTONFLAGS) test_mlton_poly/test.mlb test/test.c test_mlton_poly/test.smlfut.c
 
 run_test_mlton_poly: test_mlton_poly/test

@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## [1.6.4]
+
+* Support MLton 20241230.
+
 ## [1.6.3]
 
 * Detect use-after-free when passing inputs to entry points.

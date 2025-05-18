@@ -1050,12 +1050,12 @@ struct
         fundef "strcpy" ["p"]
           (letbind
              [ ("n", fficall "smlfut_strlen" [("p", pointer)] "Int64.int")
-             , ("s", "CharVector.tabulate (Int64.toInt n, fn i => chr 0)")
+             , ("s", "CharArray.tabulate (Int64.toInt n, fn i => chr 0)")
              , ( "_"
                , fficall "smlfut_memcpy"
-                   [("s", "string"), ("p", pointer), ("n", "Int64.int")] pointer
+                   [("s", "CharArray.array"), ("p", pointer), ("n", "Int64.int")] pointer
                )
-             ] ["s"]) @ error_check
+             ] ["CharArray.vector s"]) @ error_check
         @
         structdef "Config" NONE
           (valdef "default" cfg_default
