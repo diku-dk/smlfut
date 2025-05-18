@@ -415,10 +415,22 @@ struct
                  SOME _ => tuple_e ["ctx", fetch, "free", "ref false"]
                | _ => fetch) :: outRes (i + 1) rest
             end
+
+      fun checkInputNotFree i [] = []
+        | checkInputNotFree i ({name = _, type_, unique = _} :: rest) =
+            let
+              val v = "inp" ^ Int.toString i
+              val v_free = v ^ "_free"
+            in
+              (case lookupType manifest type_ of
+                 SOME _ => [("_", checkUseAfterFree v_free)]
+               | _ => []) @ checkInputNotFree (i + 1) rest
+            end
     in
       fundef name (["{cfg,ctx,free}", tuple_e (inpParams 0 inputs)])
         (letbind
-           ([("()", checkUseAfterFree "free")] @ outDecs 0 outputs
+           ([("()", checkUseAfterFree "free")] @ checkInputNotFree 0 inputs
+            @ outDecs 0 outputs
             @
             [ ( "ret"
               , fficall cfun

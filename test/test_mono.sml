@@ -165,6 +165,19 @@ fun test_record_array ctx =
     ()
   end
 
+fun test_notice_use_after_free ctx =
+  let
+    val sum =
+      Futhark.Opaque.sum_opaque.new ctx (Futhark.Opaque.sum_opaque.foo 2)
+  in
+    ( Futhark.Opaque.sum_opaque.free sum
+    ; Futhark.Entry.sum_opaque_size ctx sum
+    ; raise Fail "Did not notice use-after-free."
+    )
+    handle Futhark.Free => ()
+  end
+
+
 val status = ref OS.Process.success
 
 fun test ctx name f =
@@ -206,6 +219,8 @@ val () =
     test ctx "test_sum" test_sum;
 
     test ctx "test_record_array" test_record_array;
+
+    test ctx "test_notice_use_after_free" test_notice_use_after_free;
 
     Futhark.Context.free ctx;
 

@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## [1.6.3]
+
+* Detect use-after-free when passing inputs to entry points.
+
 ## [1.6.2]
 
 * Fixed generated names of SML versions of sum types.
