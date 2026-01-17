@@ -194,6 +194,8 @@ local
 
   fun showTSML (TVar s) = s
     | showTSML (TArray t) = "arr_" ^ showTSML t
+    | showTSML (TTuple []) =
+        "unit"
     | showTSML (TTuple ts) =
         "tup" ^ Int.toString (length ts) ^ "_" ^ punctuate "_" (map showTSML ts)
     | showTSML (TRecord ts) =
