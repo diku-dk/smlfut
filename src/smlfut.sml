@@ -362,9 +362,9 @@ struct
         | _ => raise Fail ("typeRank: has no rank " ^ t)
 
   fun generateEntrySpec manifest
-    (name, entry_point {cfun, inputs, outputs, tuning_params}) =
+    (name, entry_point {cfun, inputs, output, tuning_params}) =
     valspec name ["ctx", tuple_t (map (typeToSML manifest o #type_) inputs)]
-      (tuple_t (map (typeToSML manifest o #type_) outputs))
+      (typeToSML manifest (#type_ output))
 
   val error_check =
     fundef "get_error" ["ctx"]
@@ -381,7 +381,7 @@ struct
       ["if err = 0 then () else raise Error (get_error(ctx))"]
 
   fun generateEntryDef manifest
-    (name, ep as entry_point {cfun, inputs, outputs, tuning_params}) =
+    (name, ep as entry_point {cfun, inputs, output, tuning_params}) =
     let
       fun inpParams i [] = []
         | inpParams i ({name = _, type_, unique = _} :: rest) =
@@ -393,28 +393,21 @@ struct
                  SOME _ => tuple_e ["_", v, "_", v_free]
                | _ => v) :: inpParams (i + 1) rest
             end
-      fun outDecs i [] = []
-        | outDecs i ({type_, unique = _} :: rest) =
-            ("out" ^ Int.toString i, mkOut manifest type_)
-            :: outDecs (i + 1) rest
-      fun outArgs i [] = []
-        | outArgs i (out :: rest) =
-            ("out" ^ Int.toString i, outType (#type_ out))
-            :: outArgs (i + 1) rest
+      val outDec = ("out", mkOut manifest (#type_ output))
+      val outArg = ("out", outType (#type_ output))
       fun inpArgs i [] = []
         | inpArgs i (inp :: rest) =
             ("inp" ^ Int.toString i, apiType (#type_ inp))
             :: inpArgs (i + 1) rest
-      fun outRes i [] = []
-        | outRes i (out :: rest) =
-            let
-              val v = "out" ^ Int.toString i
-              val fetch = fetchOut v (#type_ out)
-            in
-              (case lookupType manifest (#type_ out) of
-                 SOME _ => tuple_e ["ctx", fetch, "free", "ref false"]
-               | _ => fetch) :: outRes (i + 1) rest
-            end
+      val outRes =
+        let
+          val v = "out"
+          val fetch = fetchOut v (#type_ output)
+        in
+          (case lookupType manifest (#type_ output) of
+             SOME _ => tuple_e ["ctx", fetch, "free", "ref false"]
+           | _ => fetch)
+        end
 
       fun checkInputNotFree i [] = []
         | checkInputNotFree i ({name = _, type_, unique = _} :: rest) =
@@ -430,15 +423,15 @@ struct
       fundef name (["{cfg,ctx,free}", tuple_e (inpParams 0 inputs)])
         (letbind
            ([("()", checkUseAfterFree "free")] @ checkInputNotFree 0 inputs
-            @ outDecs 0 outputs
+            @ [outDec]
             @
             [ ( "ret"
               , fficall cfun
-                  ([("ctx", "futhark_context")] @ outArgs 0 outputs
-                   @ inpArgs 0 inputs) "int"
+                  ([("ctx", "futhark_context")] @ [outArg] @ inpArgs 0 inputs)
+                  "int"
               )
             , ("()", "error_check(ret, ctx)")
-            ]) [tuple_e (outRes 0 outputs)])
+            ]) [outRes])
     end
 
   fun origNameComment name =
@@ -1053,7 +1046,10 @@ struct
              , ("s", "CharArray.tabulate (Int64.toInt n, fn i => chr 0)")
              , ( "_"
                , fficall "smlfut_memcpy"
-                   [("s", "CharArray.array"), ("p", pointer), ("n", "Int64.int")] pointer
+                   [ ("s", "CharArray.array")
+                   , ("p", pointer)
+                   , ("n", "Int64.int")
+                   ] pointer
                )
              ] ["CharArray.vector s"]) @ error_check
         @

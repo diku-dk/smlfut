@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## [1.6.5]
+
+* Support Futhark 0.26.1, which changes the C API slightly.
+
 ## [1.6.4]
 
 * Support MLton 20241230.

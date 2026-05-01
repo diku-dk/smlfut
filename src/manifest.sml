@@ -6,7 +6,7 @@ datatype entry_point =
   entry_point of
     { cfun: string
     , inputs: input list
-    , outputs: output list
+    , output: output
     , tuning_params: string list
     }
 
@@ -118,16 +118,15 @@ local
         }
     | inputFromJSON _ = raise Fail "Invalid input in manifest"
 
-  fun outputFromJSON (Json.OBJECT obj) : output =
-        {type_ = lookString obj "type", unique = lookBool obj "unique"}
-    | outputFromJSON _ = raise Fail "Invalid output in manifest"
+  fun outputFromJSON obj : output =
+    {type_ = lookString obj "type", unique = lookBool obj "unique"}
 
   fun entryPointFromJSON (name, Json.OBJECT obj) =
         ( name
         , entry_point
             { cfun = lookString obj "cfun"
             , inputs = map inputFromJSON (lookArray obj "inputs")
-            , outputs = map outputFromJSON (lookArray obj "outputs")
+            , output = outputFromJSON (lookObj obj "output")
             , tuning_params = map stringFromJSON (lookArray obj "tuning_params")
             }
         )
