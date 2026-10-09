@@ -2,6 +2,10 @@
 
 All user-visible changes are noted here.
 
+## NEXT
+
+* Support Futhark 0.27.1, which changes the manifests slightly.
+
 ## [1.6.5]
 
 * Support Futhark 0.26.1, which changes the C API slightly.

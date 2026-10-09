@@ -384,7 +384,7 @@ struct
     (name, ep as entry_point {cfun, inputs, output, tuning_params}) =
     let
       fun inpParams i [] = []
-        | inpParams i ({name = _, type_, unique = _} :: rest) =
+        | inpParams i ({name = _, type_, fresh = _} :: rest) =
             let
               val v = "inp" ^ Int.toString i
               val v_free = v ^ "_free"
@@ -410,7 +410,7 @@ struct
         end
 
       fun checkInputNotFree i [] = []
-        | checkInputNotFree i ({name = _, type_, unique = _} :: rest) =
+        | checkInputNotFree i ({name = _, type_, fresh = _} :: rest) =
             let
               val v = "inp" ^ Int.toString i
               val v_free = v ^ "_free"

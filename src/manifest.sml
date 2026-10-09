@@ -1,6 +1,6 @@
-type input = {name: string, type_: string, unique: bool}
+type input = {name: string, type_: string, fresh: bool}
 
-type output = {type_: string, unique: bool}
+type output = {type_: string, fresh: bool}
 
 datatype entry_point =
   entry_point of
@@ -114,12 +114,12 @@ local
   fun inputFromJSON (Json.OBJECT obj) : input =
         { name = lookString obj "name"
         , type_ = lookString obj "type"
-        , unique = lookBool obj "unique"
+        , fresh = lookBool obj "consumed"
         }
     | inputFromJSON _ = raise Fail "Invalid input in manifest"
 
   fun outputFromJSON obj : output =
-    {type_ = lookString obj "type", unique = lookBool obj "unique"}
+    {type_ = lookString obj "type", fresh = lookBool obj "fresh"}
 
   fun entryPointFromJSON (name, Json.OBJECT obj) =
         ( name
